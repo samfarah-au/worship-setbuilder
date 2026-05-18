@@ -18,15 +18,14 @@ router.get('/', async (req: Request, res: Response) => {
     .from('songs')
     .select(`
       *,
-      arrangements!inner(
+      arrangements(
         id, key_signature, key_number, tempo_bpm,
         time_signature, energy_level, is_primary
       ),
       song_metadata(
         themes, theological_depth, style, is_hymn
       )
-    `)
-    .eq('arrangements.is_primary', true);
+    `);
 
   if (source_label) {
     const labels = (source_label as string).split(',');
@@ -53,10 +52,127 @@ router.get('/', async (req: Request, res: Response) => {
   const { data, error } = await query.order('title');
 
   if (error) return res.status(500).json({ error: error.message });
+
+  // Ensure primary arrangement is first in each song's arrangements array
+  const sorted = (data ?? []).map((song: any) => ({
+    ...song,
+    arrangements: [
+      ...(song.arrangements ?? []).filter((a: any) => a.is_primary),
+      ...(song.arrangements ?? []).filter((a: any) => !a.is_primary),
+    ],
+  }));
+
+  return res.json(sorted);
+});
+
+// PATCH /songs/:id — update primary arrangement fields and metadata
+router.patch('/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const {
+    key_signature, key_number, tempo_bpm, time_signature, energy_level,
+    themes, theological_depth, style, is_hymn,
+  } = req.body;
+
+  const supabase = getSupabase();
+
+  // Update primary arrangement if musical fields provided
+  const arrangementFields: Record<string, unknown> = {};
+  if (key_signature   !== undefined) arrangementFields.key_signature   = key_signature;
+  if (key_number      !== undefined) arrangementFields.key_number      = key_number;
+  if (tempo_bpm       !== undefined) arrangementFields.tempo_bpm       = tempo_bpm;
+  if (time_signature  !== undefined) arrangementFields.time_signature  = time_signature;
+  if (energy_level    !== undefined) arrangementFields.energy_level    = energy_level;
+
+  if (Object.keys(arrangementFields).length > 0) {
+    const { error } = await supabase
+      .from('arrangements')
+      .update(arrangementFields)
+      .eq('song_id', id)
+      .eq('is_primary', true);
+    if (error) return res.status(500).json({ error: error.message });
+  }
+
+  // Update metadata if provided
+  const metaFields: Record<string, unknown> = {};
+  if (themes            !== undefined) metaFields.themes            = themes;
+  if (theological_depth !== undefined) metaFields.theological_depth = theological_depth;
+  if (style             !== undefined) metaFields.style             = style;
+  if (is_hymn           !== undefined) metaFields.is_hymn           = is_hymn;
+
+  if (Object.keys(metaFields).length > 0) {
+    const { error } = await supabase
+      .from('song_metadata')
+      .update(metaFields)
+      .eq('song_id', id);
+    if (error) return res.status(500).json({ error: error.message });
+  }
+
+  // Return updated song
+  const { data, error } = await supabase
+    .from('songs')
+    .select(`
+      *,
+      arrangements(id, key_signature, key_number, tempo_bpm, time_signature, energy_level, is_primary),
+      song_metadata(themes, theological_depth, style, is_hymn)
+    `)
+    .eq('id', id)
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
   return res.json(data);
 });
 
-// GET /songs/:id/suggestions — score all songs against this anchor
+// POST /songs/:id/arrangements — add an alternate arrangement
+router.post('/:id/arrangements', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { key_signature, key_number, tempo_bpm, time_signature, energy_level } = req.body;
+
+  if (!key_signature || key_number === undefined || !tempo_bpm || !time_signature || !energy_level) {
+    return res.status(400).json({ error: 'key_signature, key_number, tempo_bpm, time_signature, energy_level are required' });
+  }
+
+  const { data, error } = await getSupabase()
+    .from('arrangements')
+    .insert({
+      song_id: id,
+      key_signature,
+      key_number,
+      tempo_bpm,
+      time_signature,
+      energy_level,
+      is_primary: false,
+    })
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  return res.status(201).json(data);
+});
+
+// DELETE /arrangements/:arrangementId — remove an alternate arrangement
+router.delete('/arrangements/:arrangementId', async (req: Request, res: Response) => {
+  const { arrangementId } = req.params;
+
+  // Prevent deleting primary arrangements
+  const { data: arr, error: fetchErr } = await getSupabase()
+    .from('arrangements')
+    .select('is_primary')
+    .eq('id', arrangementId)
+    .single();
+
+  if (fetchErr || !arr) return res.status(404).json({ error: 'Arrangement not found' });
+  if (arr.is_primary) return res.status(400).json({ error: 'Cannot delete primary arrangement' });
+
+  const { error } = await getSupabase()
+    .from('arrangements')
+    .delete()
+    .eq('id', arrangementId);
+
+  if (error) return res.status(500).json({ error: error.message });
+  return res.status(204).send();
+});
+
+// GET /songs/:id/suggestions — score all arrangements per candidate, return best
 router.get('/:id/suggestions', async (req: Request, res: Response) => {
   const { id } = req.params;
   const {
@@ -66,7 +182,7 @@ router.get('/:id/suggestions', async (req: Request, res: Response) => {
     limit = '10',
   } = req.query;
 
-  // Fetch anchor song
+  // Fetch anchor song (primary arrangement only)
   const { data: anchor, error: anchorError } = await getSupabase()
     .from('songs')
     .select(`
@@ -85,18 +201,17 @@ router.get('/:id/suggestions', async (req: Request, res: Response) => {
     return res.status(404).json({ error: 'Song not found' });
   }
 
-  // Fetch candidates with same filters
+  // Fetch candidates with ALL arrangements (not just primary)
   let query = getSupabase()
     .from('songs')
     .select(`
       *,
-      arrangements!inner(
-        key_signature, key_number, tempo_bpm,
+      arrangements(
+        id, key_signature, key_number, tempo_bpm,
         time_signature, energy_level, is_primary
       ),
       song_metadata(themes)
     `)
-    .eq('arrangements.is_primary', true)
     .neq('id', id);
 
   if (source_label) {
@@ -119,26 +234,93 @@ router.get('/:id/suggestions', async (req: Request, res: Response) => {
     return res.status(500).json({ error: candidatesError.message });
   }
 
-  // Map to scoring format
-  const toScoring = (song: any): SongForScoring => ({
-    id:            song.id,
-    title:         song.title,
-    artist:        song.artist,
-    keyNumber:     song.arrangements[0].key_number,
-    keySignature:  song.arrangements[0].key_signature,
-    tempoBpm:      song.arrangements[0].tempo_bpm,
-    timeSignature: song.arrangements[0].time_signature,
-    energyLevel:   song.arrangements[0].energy_level,
-    themes:        song.song_metadata?.themes ?? [],
-  });
+  const anchorForScoring: SongForScoring = {
+    id:            anchor.id,
+    title:         anchor.title,
+    artist:        anchor.artist,
+    keyNumber:     anchor.arrangements[0].key_number,
+    keySignature:  anchor.arrangements[0].key_signature,
+    tempoBpm:      anchor.arrangements[0].tempo_bpm,
+    timeSignature: anchor.arrangements[0].time_signature,
+    energyLevel:   anchor.arrangements[0].energy_level,
+    themes:        anchor.song_metadata?.themes ?? [],
+  };
 
-  const anchorForScoring = toScoring(anchor);
-  const candidatesForScoring = (candidates ?? []).map(toScoring);
-  const results = scoreSongs(anchorForScoring, candidatesForScoring);
+  // For each candidate, find the best-scoring arrangement
+  type CandidateWithMeta = {
+    scoringObj: SongForScoring;
+    isPrimary: boolean;
+    primaryKeySignature: string;
+  };
+
+  const candidatesWithMeta: CandidateWithMeta[] = (candidates ?? [])
+    .map((song: any) => {
+      const arrangements: any[] = song.arrangements ?? [];
+      if (!arrangements.length) return null;
+
+      const themes: string[] = song.song_metadata?.themes ?? [];
+      const primaryArr = arrangements.find((a: any) => a.is_primary) ?? arrangements[0];
+
+      let bestArr = arrangements[0];
+      let bestScore = -1;
+
+      for (const arr of arrangements) {
+        const candidate: SongForScoring = {
+          id: song.id,
+          title: song.title,
+          artist: song.artist,
+          keyNumber: arr.key_number,
+          keySignature: arr.key_signature,
+          tempoBpm: arr.tempo_bpm,
+          timeSignature: arr.time_signature,
+          energyLevel: arr.energy_level,
+          themes,
+        };
+        const [result] = scoreSongs(anchorForScoring, [candidate]);
+        if (result && result.total > bestScore) {
+          bestScore = result.total;
+          bestArr = arr;
+        }
+      }
+
+      return {
+        scoringObj: {
+          id: song.id,
+          title: song.title,
+          artist: song.artist,
+          keyNumber: bestArr.key_number,
+          keySignature: bestArr.key_signature,
+          tempoBpm: bestArr.tempo_bpm,
+          timeSignature: bestArr.time_signature,
+          energyLevel: bestArr.energy_level,
+          themes,
+        } as SongForScoring,
+        isPrimary: bestArr.is_primary,
+        primaryKeySignature: primaryArr.key_signature,
+      };
+    })
+    .filter((c): c is CandidateWithMeta => c !== null);
+
+  const results = scoreSongs(anchorForScoring, candidatesWithMeta.map(c => c.scoringObj));
+
+  // Annotate results with alternate key reason when applicable
+  const enriched = results.map(result => {
+    const meta = candidatesWithMeta.find(c => c.scoringObj.id === result.song.id);
+    if (meta && !meta.isPrimary) {
+      return {
+        ...result,
+        reasons: [
+          ...result.reasons,
+          `Alternate key shown (${result.song.keySignature}) — primary is ${meta.primaryKeySignature}`,
+        ],
+      };
+    }
+    return result;
+  });
 
   return res.json({
     anchor: anchorForScoring,
-    suggestions: results.slice(0, parseInt(limit as string)),
+    suggestions: enriched.slice(0, parseInt(limit as string)),
   });
 });
 
