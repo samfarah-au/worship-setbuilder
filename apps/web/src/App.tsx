@@ -102,6 +102,24 @@ export default function App() {
     setSongs(prev => prev.map(s => s.id === updated.id ? updated : s))
   }
 
+  const handleSongAdd = (song: Song) => {
+    setSongs(prev => [...prev, song].sort((a, b) => a.title.localeCompare(b.title)))
+    setActiveSources(prev => {
+      const newLabels = song.source_labels.filter(l => !prev.includes(l))
+      return newLabels.length ? [...prev, ...newLabels] : prev
+    })
+  }
+
+  const handleSongsReload = async () => {
+    const params: Record<string, string> = {}
+    if (sourcesInitialised && activeSources.length < availableLabels.length) {
+      params.source_labels = activeSources.join(',')
+    }
+    if (withinYears) params.within_years = withinYears
+    const res = await axios.get('/api/songs', { params })
+    setSongs(res.data)
+  }
+
   return (
     <div className="flex h-screen bg-gray-100 text-sm overflow-hidden">
       {/* Left: Sidebar */}
@@ -177,7 +195,7 @@ export default function App() {
         </>
       ) : (
         <div className="flex-1 overflow-hidden">
-          <AdminPanel onSongUpdate={handleSongUpdate} />
+          <AdminPanel onSongUpdate={handleSongUpdate} onSongAdd={handleSongAdd} onSongsReload={handleSongsReload} />
         </div>
       )}
     </div>

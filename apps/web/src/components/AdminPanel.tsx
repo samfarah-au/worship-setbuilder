@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
-import type { Song, Arrangement, SpotifyCandidate } from '../types'
+import type { Song, Arrangement, SpotifyCandidate, PcoPreviewItem, PcoImportResult } from '../types'
 
 const KEY_SIGNATURES = ['C', 'C#', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B']
 const KEY_TO_NUMBER: Record<string, number> = {
@@ -44,9 +44,11 @@ interface NewArrangement {
 
 interface Props {
   onSongUpdate: (song: Song) => void
+  onSongAdd: (song: Song) => void
+  onSongsReload: () => Promise<void>
 }
 
-type AdminView = 'songs' | 'add' | 'settings'
+type AdminView = 'songs' | 'add' | 'pco' | 'settings'
 
 interface AddSongForm {
   title: string
@@ -77,7 +79,6 @@ function bpmToEnergy(bpm: number): number {
 
 function BpmField({ bpm, onChange, size = 'md' }: { bpm: number; onChange: (bpm: number, energy: number) => void; size?: 'sm' | 'md' }) {
   const inputClass = size === 'sm' ? `px-1.5 py-1 text-sm ${fieldClass}` : `px-2 py-1.5 text-sm ${fieldClass}`
-  const btnClass = `py-1.5 text-xs font-medium ${fieldClass} hover:bg-gray-50 px-2`
   const set = (val: number) => { const b = Math.max(40, Math.min(300, val)); onChange(b, bpmToEnergy(b)) }
   return (
     <div className="flex flex-col gap-1">
@@ -85,8 +86,10 @@ function BpmField({ bpm, onChange, size = 'md' }: { bpm: number; onChange: (bpm:
         <input type="number" min={40} max={300} value={bpm}
           onChange={e => set(parseInt(e.target.value) || 0)}
           className={`flex-1 min-w-0 ${inputClass}`} />
-        <button type="button" onClick={() => set(Math.round(bpm * 2))} className={btnClass}>×2</button>
-        <button type="button" onClick={() => set(Math.round(bpm / 2))} className={btnClass}>÷2</button>
+        {bpm <= 120 && (
+          <button type="button" onClick={() => set(Math.round(bpm * 2))}
+            className={`py-1.5 text-xs font-medium ${fieldClass} hover:bg-gray-50 px-2`}>×2</button>
+        )}
       </div>
       {bpm >= 60 && bpm <= 95 && (
         <p className="text-xs text-amber-600">Could this be {bpm * 2} BPM?</p>
@@ -95,7 +98,7 @@ function BpmField({ bpm, onChange, size = 'md' }: { bpm: number; onChange: (bpm:
   )
 }
 
-export default function AdminPanel({ onSongUpdate }: Props) {
+export default function AdminPanel({ onSongUpdate, onSongAdd, onSongsReload }: Props) {
   const [view, setView] = useState<AdminView>('songs')
 
   // Songs view state
@@ -133,6 +136,25 @@ export default function AdminPanel({ onSongUpdate }: Props) {
   const [addError, setAddError] = useState<string | null>(null)
   const [addSuccess, setAddSuccess] = useState<string | null>(null)
 
+  // Arrangement inline edit state
+  const [editingArrId, setEditingArrId] = useState<string | null>(null)
+  const [editingArr, setEditingArr] = useState<{ name: string; source_label: string; key_signature: string; tempo_bpm: number; time_signature: string; energy_level: number } | null>(null)
+  const [savingArr, setSavingArr] = useState(false)
+
+  // PCO state
+  const [pcoConfigData, setPcoConfigData] = useState<{ configured: boolean; appId: string; secret: string; pcoSongCount: number } | null>(null)
+  const [pcoAppId, setPcoAppId] = useState('')
+  const [pcoSecret, setPcoSecret] = useState('')
+  const [pcoSaving, setPcoSaving] = useState(false)
+  const [pcoConnError, setPcoConnError] = useState<string | null>(null)
+  const [pcoPreview, setPcoPreview] = useState<PcoPreviewItem[] | null>(null)
+  const [pcoLoading, setPcoLoading] = useState(false)
+  const [pcoFilter, setPcoFilter] = useState<'all' | 'new' | 'match' | 'imported'>('all')
+  const [selectedPcoIds, setSelectedPcoIds] = useState<Set<string>>(new Set())
+  const [overwriteMetadata, setOverwriteMetadata] = useState(false)
+  const [pcoImporting, setPcoImporting] = useState(false)
+  const [pcoResult, setPcoResult] = useState<PcoImportResult | null>(null)
+
   // Derived full lists for dropdowns
   const allTimeSigs = settings
     ? [...settings.time_signatures.base, ...settings.time_signatures.custom]
@@ -145,6 +167,15 @@ export default function AdminPanel({ onSongUpdate }: Props) {
     axios.get('/api/songs').then(res => setSongs(res.data)).catch(console.error)
     axios.get('/api/settings').then(res => setSettings(res.data)).catch(console.error)
   }, [])
+
+  useEffect(() => {
+    if (view !== 'pco' || pcoConfigData) return
+    axios.get('/api/pco/config').then(res => {
+      setPcoConfigData(res.data)
+      setPcoAppId(res.data.appId)
+      setPcoSecret(res.data.configured ? '' : res.data.secret)
+    }).catch(console.error)
+  }, [view])
 
   const filtered = songs.filter(s =>
     s.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -322,6 +353,7 @@ export default function AdminPanel({ onSongUpdate }: Props) {
         key_number: KEY_TO_NUMBER[addForm.key_signature] ?? 0,
       })
       setSongs(prev => [...prev, created].sort((a, b) => a.title.localeCompare(b.title)))
+      onSongAdd(created)
       setAddSuccess(`"${created.title}" added to library`)
       setAddPicked(null); setAddForm(null); setAddCandidates([])
       setAddSearch({ title: '', artist: '' })
@@ -336,6 +368,102 @@ export default function AdminPanel({ onSongUpdate }: Props) {
       setAddSaving(false)
     }
   }
+
+  // Arrangement inline edit handlers
+  const startEditArr = (arr: Arrangement) => {
+    setEditingArrId(arr.id)
+    setEditingArr({ name: arr.name ?? '', source_label: arr.source_label ?? '', key_signature: arr.key_signature, tempo_bpm: arr.tempo_bpm, time_signature: arr.time_signature, energy_level: arr.energy_level })
+  }
+
+  const handleSaveArr = async () => {
+    if (!selectedSong || !editingArrId || !editingArr) return
+    setSavingArr(true)
+    try {
+      const { data } = await axios.patch(`/api/songs/arrangements/${editingArrId}`, {
+        ...editingArr,
+        key_number: KEY_TO_NUMBER[editingArr.key_signature] ?? 0,
+      })
+      const updated = { ...selectedSong, arrangements: selectedSong.arrangements.map(a => a.id === editingArrId ? { ...a, ...data } : a) }
+      setSelectedSong(updated)
+      setSongs(prev => prev.map(s => s.id === updated.id ? updated : s))
+      onSongUpdate(updated)
+      setEditingArrId(null); setEditingArr(null)
+    } catch (err: any) {
+      setSaveError(err.response?.data?.error ?? 'Save failed')
+    } finally {
+      setSavingArr(false)
+    }
+  }
+
+  // PCO handlers
+  const savePcoConnection = async () => {
+    if (!pcoAppId.trim() || !pcoSecret.trim()) { setPcoConnError('Both App ID and Secret are required'); return }
+    setPcoSaving(true); setPcoConnError(null)
+    try {
+      const { data } = await axios.put('/api/pco/config', { app_id: pcoAppId, secret: pcoSecret })
+      if (data.clearedCount > 0) {
+        await onSongsReload()
+      }
+      const refreshed = await axios.get('/api/pco/config')
+      setPcoConfigData(refreshed.data)
+      setPcoSecret('')
+      setPcoPreview(null); setPcoResult(null)
+    } catch (err: any) {
+      setPcoConnError(err.response?.data?.error ?? 'Connection failed')
+    } finally {
+      setPcoSaving(false)
+    }
+  }
+
+  const resetPcoConnection = async () => {
+    if (!confirm('This will remove the "Planning Center" label from all songs. Continue?')) return
+    setPcoSaving(true)
+    try {
+      await axios.put('/api/pco/config', { reset: true })
+      await onSongsReload()
+      setPcoConfigData(prev => prev ? { ...prev, configured: false, pcoSongCount: 0 } : prev)
+      setPcoPreview(null); setPcoResult(null)
+    } finally {
+      setPcoSaving(false)
+    }
+  }
+
+  const loadPcoPreview = async () => {
+    setPcoLoading(true); setPcoResult(null)
+    try {
+      const { data } = await axios.get('/api/pco/preview')
+      setPcoPreview(data)
+      setSelectedPcoIds(new Set(data.filter((i: PcoPreviewItem) => i.status !== 'imported').map((i: PcoPreviewItem) => i.pcoId)))
+    } catch (err: any) {
+      setPcoConnError(err.response?.data?.error ?? 'Preview failed')
+    } finally {
+      setPcoLoading(false)
+    }
+  }
+
+  const runPcoImport = async () => {
+    setPcoImporting(true); setPcoResult(null)
+    try {
+      const { data } = await axios.post('/api/pco/import', {
+        pco_song_ids: [...selectedPcoIds],
+        overwrite_metadata: overwriteMetadata,
+      })
+      setPcoResult(data)
+      await onSongsReload()
+      // Refresh preview to update statuses
+      const preview = await axios.get('/api/pco/preview')
+      setPcoPreview(preview.data)
+      const refreshed = await axios.get('/api/pco/config')
+      setPcoConfigData(refreshed.data)
+    } catch (err: any) {
+      setPcoConnError(err.response?.data?.error ?? 'Import failed')
+    } finally {
+      setPcoImporting(false)
+    }
+  }
+
+  const togglePcoId = (id: string) => setSelectedPcoIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
+  const filteredPreview = pcoPreview?.filter(i => pcoFilter === 'all' || i.status === pcoFilter) ?? []
 
   // Settings handlers
   const addTimeSig = async () => {
@@ -401,6 +529,12 @@ export default function AdminPanel({ onSongUpdate }: Props) {
             className={`flex-1 py-2.5 text-xs font-medium transition-colors ${view === 'add' ? 'text-blue-600 border-b-2 border-blue-600 -mb-px' : 'text-gray-500 hover:text-gray-700'}`}
           >
             + Add
+          </button>
+          <button
+            onClick={() => setView('pco')}
+            className={`flex-1 py-2.5 text-xs font-medium transition-colors ${view === 'pco' ? 'text-blue-600 border-b-2 border-blue-600 -mb-px' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            PCO
           </button>
           <button
             onClick={() => setView('settings')}
@@ -498,6 +632,41 @@ export default function AdminPanel({ onSongUpdate }: Props) {
           </div>
         )}
 
+        {view === 'pco' && (
+          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+            <div>
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Planning Center</h3>
+              {pcoConfigData?.configured && (
+                <p className="text-xs text-green-600 mb-3">Connected · {pcoConfigData.pcoSongCount} songs imported</p>
+              )}
+            </div>
+            {pcoConnError && <p className="text-xs text-red-500">{pcoConnError}</p>}
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-gray-600">App ID</span>
+              <input type="text" value={pcoAppId} onChange={e => setPcoAppId(e.target.value)} className={`px-2.5 py-1.5 text-xs ${fieldClass}`} placeholder="Personal Access Token App ID" />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-gray-600">Secret {pcoConfigData?.configured && <span className="text-gray-400">(leave blank to keep existing)</span>}</span>
+              <input type="password" value={pcoSecret} onChange={e => setPcoSecret(e.target.value)} className={`px-2.5 py-1.5 text-xs ${fieldClass}`} placeholder={pcoConfigData?.configured ? '••••••••' : 'Personal Access Token Secret'} />
+            </label>
+            <div className="flex gap-2">
+              <button onClick={savePcoConnection} disabled={pcoSaving} className="flex-1 text-xs py-1.5 bg-gray-700 text-white rounded hover:bg-gray-800 disabled:opacity-50">
+                {pcoSaving ? 'Connecting…' : 'Save Connection'}
+              </button>
+              {pcoConfigData?.configured && (
+                <button onClick={resetPcoConnection} disabled={pcoSaving} className="text-xs px-3 py-1.5 border border-red-200 text-red-500 hover:bg-red-50 rounded disabled:opacity-50">
+                  Reset
+                </button>
+              )}
+            </div>
+            {pcoConfigData?.configured && (
+              <button onClick={loadPcoPreview} disabled={pcoLoading} className="text-xs py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+                {pcoLoading ? 'Loading…' : 'Load PCO Library'}
+              </button>
+            )}
+          </div>
+        )}
+
         {view === 'settings' && (
           <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6">
             {settingsError && <p className="text-xs text-red-500">{settingsError}</p>}
@@ -567,7 +736,72 @@ export default function AdminPanel({ onSongUpdate }: Props) {
 
       {/* Right: edit panel */}
       <div className="flex-1 overflow-y-auto">
-        {view === 'add' ? (
+        {view === 'pco' ? (
+          !pcoPreview ? (
+            <div className="flex items-center justify-center h-full text-sm text-gray-400">
+              {pcoLoading ? 'Loading PCO library…' : pcoConfigData?.configured ? 'Click "Load PCO Library" to preview songs' : 'Configure your PCO connection on the left'}
+            </div>
+          ) : (
+            <div className="flex flex-col h-full overflow-hidden">
+              {/* Summary + controls */}
+              <div className="p-4 border-b border-gray-200 flex flex-wrap items-center gap-3">
+                <div className="flex gap-3 text-xs">
+                  {(['all', 'new', 'match', 'imported'] as const).map(f => {
+                    const count = f === 'all' ? pcoPreview.length : pcoPreview.filter(i => i.status === f).length
+                    return (
+                      <button key={f} onClick={() => setPcoFilter(f)}
+                        className={`px-2.5 py-1 rounded border transition-colors ${pcoFilter === f ? 'bg-gray-700 text-white border-gray-700' : 'border-gray-200 text-gray-500 hover:border-gray-400'}`}>
+                        {f === 'all' ? 'All' : f === 'new' ? 'New' : f === 'match' ? 'Matched' : 'Imported'} ({count})
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="flex items-center gap-2 ml-auto">
+                  <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                    <input type="checkbox" checked={overwriteMetadata} onChange={e => setOverwriteMetadata(e.target.checked)} className="w-3.5 h-3.5" />
+                    Overwrite BPM/key/time sig
+                  </label>
+                  <button onClick={runPcoImport} disabled={pcoImporting || selectedPcoIds.size === 0}
+                    className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+                    {pcoImporting ? 'Importing…' : `Import ${selectedPcoIds.size} selected`}
+                  </button>
+                </div>
+              </div>
+              {pcoResult && (
+                <div className="px-4 py-2 bg-green-50 border-b border-green-200 text-xs text-green-700 flex gap-4">
+                  <span>{pcoResult.added} added</span>
+                  <span>{pcoResult.matched} matched</span>
+                  <span>{pcoResult.skipped} skipped</span>
+                  {pcoResult.errors.length > 0 && <span className="text-red-600">{pcoResult.errors.length} errors</span>}
+                </div>
+              )}
+              {/* Song list */}
+              <div className="flex-1 overflow-y-auto">
+                {filteredPreview.map(item => (
+                  <div key={item.pcoId} className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-100 hover:bg-gray-50">
+                    <input type="checkbox" checked={selectedPcoIds.has(item.pcoId)} onChange={() => togglePcoId(item.pcoId)}
+                      disabled={item.status === 'imported'}
+                      className="w-4 h-4 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-800 truncate">{item.title}</div>
+                      <div className="text-xs text-gray-500 truncate">{item.author}{item.ccliNumber ? ` · CCLI ${item.ccliNumber}` : ''}</div>
+                      {item.status === 'match' && (
+                        <div className="text-xs text-amber-600">Matches: {item.existingTitle} <span className="text-gray-400">via {item.matchedBy}</span></div>
+                      )}
+                    </div>
+                    <span className={`text-xs px-2 py-0.5 rounded flex-shrink-0 ${
+                      item.status === 'new' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                      item.status === 'match' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                      'bg-gray-100 text-gray-500 border border-gray-200'
+                    }`}>
+                      {item.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        ) : view === 'add' ? (
           !addForm ? (
             <div className="flex items-center justify-center h-full text-sm text-gray-400">
               {addSuccess
@@ -896,15 +1130,62 @@ export default function AdminPanel({ onSongUpdate }: Props) {
                   <p className="text-xs text-gray-400">No alternate arrangements</p>
                 )}
                 {selectedSong.arrangements.filter(a => !a.is_primary).map(arr => (
-                  <div key={arr.id} className="flex items-center gap-3 border border-gray-200 rounded-lg px-3 py-2 bg-gray-50">
-                    <div className="flex-1 min-w-0">
-                      {arr.name && <div className="text-sm font-medium text-gray-700 truncate">{arr.name}</div>}
-                      <div className="text-xs text-gray-500">
-                        {arr.source_label && <span className="mr-1.5 bg-gray-200 text-gray-600 px-1 rounded">{arr.source_label}</span>}
-                        {arr.key_signature} · {arr.tempo_bpm} BPM · {arr.time_signature} · Energy {arr.energy_level}
+                  <div key={arr.id} className="border border-gray-200 rounded-lg bg-gray-50">
+                    {editingArrId === arr.id && editingArr ? (
+                      <div className="p-3">
+                        <div className="grid grid-cols-2 gap-2 mb-2">
+                          <label className="col-span-2 flex flex-col gap-1">
+                            <span className="text-xs text-gray-500">Name</span>
+                            <input type="text" value={editingArr.name} onChange={e => setEditingArr(prev => prev ? { ...prev, name: e.target.value } : prev)} className={`px-2 py-1 text-sm ${fieldClass}`} />
+                          </label>
+                          <label className="col-span-2 flex flex-col gap-1">
+                            <span className="text-xs text-gray-500">Source Label</span>
+                            <input type="text" value={editingArr.source_label} onChange={e => setEditingArr(prev => prev ? { ...prev, source_label: e.target.value } : prev)} className={`px-2 py-1 text-sm ${fieldClass}`} />
+                          </label>
+                          <label className="flex flex-col gap-1">
+                            <span className="text-xs text-gray-500">Key</span>
+                            <select value={editingArr.key_signature} onChange={e => setEditingArr(prev => prev ? { ...prev, key_signature: e.target.value } : prev)} className={`px-1.5 py-1 text-sm ${fieldClass}`}>
+                              {KEY_SIGNATURES.map(k => <option key={k} value={k}>{k}</option>)}
+                            </select>
+                          </label>
+                          <div className="flex flex-col gap-1">
+                            <span className="text-xs text-gray-500">BPM</span>
+                            <BpmField bpm={editingArr.tempo_bpm} size="sm" onChange={(b, e) => setEditingArr(prev => prev ? { ...prev, tempo_bpm: b, energy_level: e } : prev)} />
+                          </div>
+                          <label className="flex flex-col gap-1">
+                            <span className="text-xs text-gray-500">Time</span>
+                            <select value={editingArr.time_signature} onChange={e => setEditingArr(prev => prev ? { ...prev, time_signature: e.target.value } : prev)} className={`px-1.5 py-1 text-sm ${fieldClass}`}>
+                              {allTimeSigs.map(ts => <option key={ts} value={ts}>{ts}</option>)}
+                            </select>
+                          </label>
+                          <div className="flex flex-col gap-1">
+                            <span className="text-xs text-gray-500">Energy</span>
+                            <div className="flex gap-1 mt-0.5">
+                              {[1,2,3,4,5].map(n => (
+                                <button key={n} type="button" onClick={() => setEditingArr(prev => prev ? { ...prev, energy_level: n } : prev)}
+                                  className={`w-7 h-7 rounded text-xs font-medium transition-colors ${editingArr.energy_level === n ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{n}</button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={handleSaveArr} disabled={savingArr} className="text-xs px-3 py-1.5 bg-gray-700 text-white rounded hover:bg-gray-800 disabled:opacity-50">{savingArr ? 'Saving…' : 'Save'}</button>
+                          <button onClick={() => { setEditingArrId(null); setEditingArr(null) }} className="text-xs px-3 py-1.5 text-gray-500 hover:text-gray-700">Cancel</button>
+                        </div>
                       </div>
-                    </div>
-                    <button onClick={() => handleDeleteArrangement(arr)} className="text-xs text-gray-400 hover:text-red-500 flex-shrink-0">Remove</button>
+                    ) : (
+                      <div className="flex items-center gap-3 px-3 py-2">
+                        <div className="flex-1 min-w-0">
+                          {arr.name && <div className="text-sm font-medium text-gray-700 truncate">{arr.name}</div>}
+                          <div className="text-xs text-gray-500">
+                            {arr.source_label && <span className="mr-1.5 bg-gray-200 text-gray-600 px-1 rounded">{arr.source_label}</span>}
+                            {arr.key_signature} · {arr.tempo_bpm} BPM · {arr.time_signature} · Energy {arr.energy_level}
+                          </div>
+                        </div>
+                        <button onClick={() => startEditArr(arr)} className="text-xs text-gray-400 hover:text-blue-600 flex-shrink-0">Edit</button>
+                        <button onClick={() => handleDeleteArrangement(arr)} className="text-xs text-gray-400 hover:text-red-500 flex-shrink-0">Remove</button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

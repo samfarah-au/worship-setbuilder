@@ -180,6 +180,31 @@ router.post('/:id/arrangements', async (req: Request, res: Response) => {
   return res.status(201).json(data);
 });
 
+// PATCH /arrangements/:arrangementId — update an alternate arrangement
+router.patch('/arrangements/:arrangementId', async (req: Request, res: Response) => {
+  const { arrangementId } = req.params;
+  const { name, source_label, key_signature, key_number, tempo_bpm, time_signature, energy_level } = req.body;
+
+  const fields: Record<string, unknown> = {};
+  if (name           !== undefined) fields.name           = name;
+  if (source_label   !== undefined) fields.source_label   = source_label;
+  if (key_signature  !== undefined) fields.key_signature  = key_signature;
+  if (key_number     !== undefined) fields.key_number     = key_number;
+  if (tempo_bpm      !== undefined) fields.tempo_bpm      = tempo_bpm;
+  if (time_signature !== undefined) fields.time_signature = time_signature;
+  if (energy_level   !== undefined) fields.energy_level   = energy_level;
+
+  const { data, error } = await getSupabase()
+    .from('arrangements')
+    .update(fields)
+    .eq('id', arrangementId)
+    .select(ARRANGEMENT_SELECT)
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json(data);
+});
+
 // DELETE /arrangements/:arrangementId — remove an alternate arrangement
 router.delete('/arrangements/:arrangementId', async (req: Request, res: Response) => {
   const { arrangementId } = req.params;

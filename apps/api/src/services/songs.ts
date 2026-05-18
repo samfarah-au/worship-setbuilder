@@ -5,7 +5,7 @@ export interface NewSong {
   title: string;
   artist: string;
   sourceLabels: string[];
-  spotifyTrackId: string;
+  spotifyTrackId?: string;
   album?: string;
   releasedAt?: Date;
   ccliNumber?: string;
@@ -34,7 +34,7 @@ export async function addSong(song: NewSong) {
       album:            song.album,
       released_at:      song.releasedAt?.toISOString().split('T')[0],
       ccli_number:      song.ccliNumber,
-      spotify_track_id: song.spotifyTrackId,
+      spotify_track_id: song.spotifyTrackId ?? null,
     })
     .select()
     .single();

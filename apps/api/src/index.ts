@@ -6,6 +6,7 @@ dotenv.config({ path: path.resolve(process.cwd(), '../../.env') });
 
 import songsRouter from './routes/songs';
 import settingsRouter from './routes/settings';
+import pcoRouter from './routes/pco';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -19,6 +20,7 @@ app.get('/health', (req, res) => {
 
 app.use('/songs', songsRouter);
 app.use('/settings', settingsRouter);
+app.use('/pco', pcoRouter);
 
 app.listen(PORT, () => {
   console.log(`API running on http://localhost:${PORT}`);

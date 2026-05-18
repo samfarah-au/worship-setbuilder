@@ -65,6 +65,24 @@ export interface SpotifyCandidate {
   isLive: boolean
 }
 
+export interface PcoPreviewItem {
+  pcoId: string
+  title: string
+  author: string
+  ccliNumber: string | null
+  status: 'imported' | 'match' | 'new'
+  existingSongId: string | null
+  existingTitle: string | null
+  matchedBy: 'ccli' | 'title' | null
+}
+
+export interface PcoImportResult {
+  added: number
+  matched: number
+  skipped: number
+  errors: string[]
+}
+
 export interface SuggestionsResponse {
   anchor: SuggestionResult['song']
   suggestions: SuggestionResult[]

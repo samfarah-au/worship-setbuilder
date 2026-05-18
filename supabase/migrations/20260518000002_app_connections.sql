@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS app_connections (
+  key TEXT PRIMARY KEY,
+  config JSONB NOT NULL DEFAULT '{}'
+);
