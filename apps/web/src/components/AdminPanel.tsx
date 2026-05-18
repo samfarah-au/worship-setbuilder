@@ -185,7 +185,7 @@ export default function AdminPanel({ onSongUpdate }: Props) {
             placeholder="Search songs..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+            className="w-full bg-white border border-gray-300 rounded px-2.5 py-1.5 text-sm shadow-sm focus:outline-none focus:border-blue-400"
           />
           <p className="text-xs text-gray-400 mt-1.5">{filtered.length} songs</p>
         </div>
@@ -242,7 +242,7 @@ export default function AdminPanel({ onSongUpdate }: Props) {
                     placeholder={`e.g. Original (${selectedSong.artist})`}
                     value={editState.arrangementName}
                     onChange={e => setEditState(prev => prev ? { ...prev, arrangementName: e.target.value } : prev)}
-                    className="border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+                    className="bg-white border border-gray-300 rounded px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:border-blue-400"
                   />
                 </label>
 
@@ -251,7 +251,7 @@ export default function AdminPanel({ onSongUpdate }: Props) {
                   <select
                     value={editState.key_signature}
                     onChange={e => setEditState(prev => prev ? { ...prev, key_signature: e.target.value } : prev)}
-                    className="border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+                    className="bg-white border border-gray-300 rounded px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:border-blue-400"
                   >
                     {KEY_SIGNATURES.map(k => <option key={k} value={k}>{k}</option>)}
                   </select>
@@ -265,7 +265,7 @@ export default function AdminPanel({ onSongUpdate }: Props) {
                     max={220}
                     value={editState.tempo_bpm}
                     onChange={e => setEditState(prev => prev ? { ...prev, tempo_bpm: parseInt(e.target.value) || 0 } : prev)}
-                    className="border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+                    className="bg-white border border-gray-300 rounded px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:border-blue-400"
                   />
                 </label>
 
@@ -274,7 +274,7 @@ export default function AdminPanel({ onSongUpdate }: Props) {
                   <select
                     value={editState.time_signature}
                     onChange={e => setEditState(prev => prev ? { ...prev, time_signature: e.target.value } : prev)}
-                    className="border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+                    className="bg-white border border-gray-300 rounded px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:border-blue-400"
                   >
                     {TIME_SIGNATURES.map(ts => <option key={ts} value={ts}>{ts}</option>)}
                   </select>
@@ -310,7 +310,7 @@ export default function AdminPanel({ onSongUpdate }: Props) {
                   <select
                     value={editState.style}
                     onChange={e => setEditState(prev => prev ? { ...prev, style: e.target.value } : prev)}
-                    className="border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+                    className="bg-white border border-gray-300 rounded px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:border-blue-400"
                   >
                     {STYLES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
@@ -368,7 +368,7 @@ export default function AdminPanel({ onSongUpdate }: Props) {
                   value={themeInput}
                   onChange={e => setThemeInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && addTheme(themeInput)}
-                  className="flex-1 border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+                  className="flex-1 bg-white border border-gray-300 rounded px-2.5 py-1.5 text-sm shadow-sm focus:outline-none focus:border-blue-400"
                 />
                 <button
                   onClick={() => addTheme(themeInput)}
@@ -439,7 +439,7 @@ export default function AdminPanel({ onSongUpdate }: Props) {
                       placeholder="e.g. Church key, Acoustic, Capo 2"
                       value={newArr.name}
                       onChange={e => setNewArr(prev => ({ ...prev, name: e.target.value }))}
-                      className="border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+                      className="bg-white border border-gray-300 rounded px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:border-blue-400"
                     />
                   </label>
                   <label className="flex flex-col gap-1">
@@ -447,7 +447,7 @@ export default function AdminPanel({ onSongUpdate }: Props) {
                     <select
                       value={newArr.key_signature}
                       onChange={e => setNewArr(prev => ({ ...prev, key_signature: e.target.value }))}
-                      className="border border-gray-200 rounded px-1.5 py-1 text-sm focus:outline-none focus:border-blue-400"
+                      className="bg-white border border-gray-300 rounded px-1.5 py-1 text-sm shadow-sm focus:outline-none focus:border-blue-400"
                     >
                       {KEY_SIGNATURES.map(k => <option key={k} value={k}>{k}</option>)}
                     </select>
@@ -460,7 +460,7 @@ export default function AdminPanel({ onSongUpdate }: Props) {
                       max={220}
                       value={newArr.tempo_bpm}
                       onChange={e => setNewArr(prev => ({ ...prev, tempo_bpm: parseInt(e.target.value) || 0 }))}
-                      className="border border-gray-200 rounded px-1.5 py-1 text-sm focus:outline-none focus:border-blue-400"
+                      className="bg-white border border-gray-300 rounded px-1.5 py-1 text-sm shadow-sm focus:outline-none focus:border-blue-400"
                     />
                   </label>
                   <label className="flex flex-col gap-1">
@@ -468,7 +468,7 @@ export default function AdminPanel({ onSongUpdate }: Props) {
                     <select
                       value={newArr.time_signature}
                       onChange={e => setNewArr(prev => ({ ...prev, time_signature: e.target.value }))}
-                      className="border border-gray-200 rounded px-1.5 py-1 text-sm focus:outline-none focus:border-blue-400"
+                      className="bg-white border border-gray-300 rounded px-1.5 py-1 text-sm shadow-sm focus:outline-none focus:border-blue-400"
                     >
                       {TIME_SIGNATURES.map(ts => <option key={ts} value={ts}>{ts}</option>)}
                     </select>
@@ -478,7 +478,7 @@ export default function AdminPanel({ onSongUpdate }: Props) {
                     <select
                       value={newArr.energy_level}
                       onChange={e => setNewArr(prev => ({ ...prev, energy_level: parseInt(e.target.value) }))}
-                      className="border border-gray-200 rounded px-1.5 py-1 text-sm focus:outline-none focus:border-blue-400"
+                      className="bg-white border border-gray-300 rounded px-1.5 py-1 text-sm shadow-sm focus:outline-none focus:border-blue-400"
                     >
                       {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
                     </select>
