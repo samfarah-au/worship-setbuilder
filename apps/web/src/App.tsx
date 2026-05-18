@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import axios from 'axios'
 import type { Song, SuggestionResult } from './types'
-import { SOURCE_LABELS } from './types'
 import SongList from './components/SongList'
 import SetBuilder from './components/SetBuilder'
 import SourceFilter from './components/SourceFilter'
@@ -15,31 +14,52 @@ export default function App() {
   const [selectedSong, setSelectedSong] = useState<Song | null>(null)
   const [suggestions, setSuggestions] = useState<SuggestionResult[]>([])
   const [setList, setSetList] = useState<Song[]>([])
-  const [activeSources, setActiveSources] = useState<string[]>([...SOURCE_LABELS])
+  const [activeSources, setActiveSources] = useState<string[]>([])
+  const [sourcesInitialised, setSourcesInitialised] = useState(false)
   const [withinYears, setWithinYears] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
 
+  // All unique source labels derived from loaded songs
+  const availableLabels = useMemo(
+    () => [...new Set(songs.flatMap(s => s.source_labels))].sort(),
+    [songs]
+  )
+
+  // Initialise activeSources once songs first load; add any new labels automatically
+  useEffect(() => {
+    if (availableLabels.length === 0) return
+    if (!sourcesInitialised) {
+      setActiveSources(availableLabels)
+      setSourcesInitialised(true)
+    } else {
+      setActiveSources(prev => {
+        const newLabels = availableLabels.filter(l => !prev.includes(l))
+        return newLabels.length ? [...prev, ...newLabels] : prev
+      })
+    }
+  }, [availableLabels])
+
   // Fetch songs when filters change
   useEffect(() => {
     const params: Record<string, string> = {}
-    if (activeSources.length < SOURCE_LABELS.length) {
-      params.source_label = activeSources.join(',')
+    if (sourcesInitialised && activeSources.length < availableLabels.length) {
+      params.source_labels = activeSources.join(',')
     }
     if (withinYears) params.within_years = withinYears
 
     axios.get('/api/songs', { params })
       .then(res => setSongs(res.data))
       .catch(console.error)
-  }, [activeSources, withinYears])
+  }, [activeSources, withinYears, sourcesInitialised])
 
   // Fetch suggestions when anchor song changes
   useEffect(() => {
     if (!selectedSong) return
 
     const params: Record<string, string> = {}
-    if (activeSources.length < SOURCE_LABELS.length) {
-      params.source_label = activeSources.join(',')
+    if (sourcesInitialised && activeSources.length < availableLabels.length) {
+      params.source_labels = activeSources.join(',')
     }
     if (withinYears) params.within_years = withinYears
 
@@ -117,8 +137,9 @@ export default function App() {
 
         {tab === 'library' && (
           <SourceFilter
+            availableLabels={availableLabels}
             activeSources={activeSources}
-            onToggle={(label) => setActiveSources(prev =>
+            onToggle={label => setActiveSources(prev =>
               prev.includes(label) ? prev.filter(s => s !== label) : [...prev, label]
             )}
             withinYears={withinYears}
@@ -130,7 +151,6 @@ export default function App() {
       {/* Main content */}
       {tab === 'library' ? (
         <>
-          {/* Middle: Song list + suggestions */}
           <div className="flex-1 flex flex-col overflow-hidden">
             <SongList
               songs={songs}
@@ -146,7 +166,6 @@ export default function App() {
             />
           </div>
 
-          {/* Right: Set builder */}
           <div className="w-72 bg-white border-l border-gray-200">
             <SetBuilder
               setList={setList}

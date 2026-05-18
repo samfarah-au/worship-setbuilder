@@ -1,13 +1,12 @@
-import { SOURCE_LABELS } from '../types'
-
 interface Props {
+  availableLabels: string[]
   activeSources: string[]
   onToggle: (label: string) => void
   withinYears: string
   onWithinYearsChange: (val: string) => void
 }
 
-export default function SourceFilter({ activeSources, onToggle, withinYears, onWithinYearsChange }: Props) {
+export default function SourceFilter({ availableLabels, activeSources, onToggle, withinYears, onWithinYearsChange }: Props) {
   return (
     <div className="flex flex-col flex-1 overflow-y-auto">
       <div className="p-3 border-b border-gray-200">
@@ -31,7 +30,7 @@ export default function SourceFilter({ activeSources, onToggle, withinYears, onW
           Sources
         </label>
         <div className="flex flex-col gap-1.5">
-          {SOURCE_LABELS.map(label => (
+          {availableLabels.map(label => (
             <button
               key={label}
               onClick={() => onToggle(label)}

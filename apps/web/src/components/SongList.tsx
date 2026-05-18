@@ -62,8 +62,8 @@ export default function SongList({
           <div className="flex-1">
             <div className="font-medium text-blue-800">{selectedSong.title}</div>
             <div className="text-xs text-blue-600">
-              {selectedSong.artist} · {selectedSong.arrangements[0]?.key_signature} · {selectedSong.arrangements[0]?.tempo_bpm} BPM · {selectedSong.released_at?.split('-')[0]}
-              {' '}· <span className="italic">anchor song</span>
+              {selectedSong.artist} · {selectedSong.source_labels.join(', ')} · {selectedSong.arrangements[0]?.key_signature} · {selectedSong.arrangements[0]?.tempo_bpm} BPM
+              {' '}· <span className="italic">anchor</span>
             </div>
           </div>
           <button
@@ -106,8 +106,17 @@ export default function SongList({
                     {song.title}
                     {isAnchor && <span className="ml-2 text-xs font-normal text-blue-500">anchor</span>}
                   </div>
-                  <div className="text-xs text-gray-500 mt-0.5">
-                    {song.artist} · {song.source_label} · {song.released_at?.split('-')[0]}
+                  <div className="text-xs text-gray-500 mt-0.5 flex flex-wrap items-center gap-x-1">
+                    <span>{song.artist}</span>
+                    <span>·</span>
+                    {song.source_labels.map(l => (
+                      <span key={l} className="bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-px rounded text-xs">{l}</span>
+                    ))}
+                    {song.arrangements.filter(a => !a.is_primary && a.source_label).map(a => (
+                      <span key={a.id} className="bg-gray-100 text-gray-500 border border-gray-200 px-1.5 py-px rounded text-xs">{a.source_label}</span>
+                    ))}
+                    <span>·</span>
+                    <span>{song.released_at?.split('-')[0]}</span>
                   </div>
                   <div className="flex gap-1.5 mt-1.5 flex-wrap">
                     {song.arrangements[0] && (

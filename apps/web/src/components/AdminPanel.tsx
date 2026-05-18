@@ -7,15 +7,21 @@ const KEY_TO_NUMBER: Record<string, number> = {
   'C': 0, 'C#': 1, 'Db': 1, 'D': 2, 'Eb': 3, 'E': 4,
   'F': 5, 'F#': 6, 'Gb': 6, 'G': 7, 'Ab': 8, 'A': 9, 'Bb': 10, 'B': 11,
 }
-const TIME_SIGNATURES = ['4/4', '3/4', '6/8', '2/4', '2/2', '12/8']
-const STYLES = ['modern', 'hymn', 'gospel', 'folk-worship']
+const BASE_TIME_SIGNATURES = ['4/4', '3/4', '6/8', '2/4', '2/2', '12/8']
+const BASE_STYLES = ['modern', 'hymn', 'gospel', 'folk-worship']
 const COMMON_THEMES = [
   'praise', 'worship', 'grace', 'salvation', 'hope', 'faith', 'love',
   'surrender', 'holiness', 'presence', 'gratitude', 'redemption',
   'glory', 'victory', 'peace', 'joy', 'trinity', 'resurrection',
 ]
 
+interface SettingsData {
+  time_signatures: { base: string[]; custom: string[] }
+  styles: { base: string[]; custom: string[] }
+}
+
 interface EditState {
+  source_labels: string[]
   arrangementName: string
   key_signature: string
   tempo_bpm: number
@@ -29,6 +35,7 @@ interface EditState {
 
 interface NewArrangement {
   name: string
+  source_label: string
   key_signature: string
   tempo_bpm: number
   time_signature: string
@@ -39,7 +46,14 @@ interface Props {
   onSongUpdate: (song: Song) => void
 }
 
+type AdminView = 'songs' | 'settings'
+
+const fieldClass = 'bg-white border border-gray-300 rounded shadow-sm focus:outline-none focus:border-blue-400'
+
 export default function AdminPanel({ onSongUpdate }: Props) {
+  const [view, setView] = useState<AdminView>('songs')
+
+  // Songs view state
   const [songs, setSongs] = useState<Song[]>([])
   const [search, setSearch] = useState('')
   const [selectedSong, setSelectedSong] = useState<Song | null>(null)
@@ -48,14 +62,30 @@ export default function AdminPanel({ onSongUpdate }: Props) {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [themeInput, setThemeInput] = useState('')
+  const [sourceLabelInput, setSourceLabelInput] = useState('')
   const [newArr, setNewArr] = useState<NewArrangement>({
-    name: '', key_signature: 'G', tempo_bpm: 72, time_signature: '4/4', energy_level: 3,
+    name: '', source_label: '', key_signature: 'G', tempo_bpm: 72, time_signature: '4/4', energy_level: 3,
   })
   const [addingArr, setAddingArr] = useState(false)
   const successTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Settings view state
+  const [settings, setSettings] = useState<SettingsData | null>(null)
+  const [newTimeSig, setNewTimeSig] = useState('')
+  const [newStyle, setNewStyle] = useState('')
+  const [settingsError, setSettingsError] = useState<string | null>(null)
+
+  // Derived full lists for dropdowns
+  const allTimeSigs = settings
+    ? [...settings.time_signatures.base, ...settings.time_signatures.custom]
+    : BASE_TIME_SIGNATURES
+  const allStyles = settings
+    ? [...settings.styles.base, ...settings.styles.custom]
+    : BASE_STYLES
+
   useEffect(() => {
     axios.get('/api/songs').then(res => setSongs(res.data)).catch(console.error)
+    axios.get('/api/settings').then(res => setSettings(res.data)).catch(console.error)
   }, [])
 
   const filtered = songs.filter(s =>
@@ -63,10 +93,10 @@ export default function AdminPanel({ onSongUpdate }: Props) {
     s.artist.toLowerCase().includes(search.toLowerCase())
   )
 
-  const primaryDefaults = (song: Song) => {
+  const primaryDefaults = (song: Song): NewArrangement => {
     const primary = song.arrangements.find(a => a.is_primary) ?? song.arrangements[0]
     return {
-      name:           '',
+      name: '', source_label: '',
       key_signature:  primary?.key_signature  ?? 'G',
       tempo_bpm:      primary?.tempo_bpm      ?? 72,
       time_signature: primary?.time_signature ?? '4/4',
@@ -78,6 +108,7 @@ export default function AdminPanel({ onSongUpdate }: Props) {
     setSelectedSong(song)
     const primary = song.arrangements.find(a => a.is_primary) ?? song.arrangements[0]
     setEditState({
+      source_labels:     [...song.source_labels],
       arrangementName:   primary?.name ?? '',
       key_signature:     primary?.key_signature ?? 'G',
       tempo_bpm:         primary?.tempo_bpm ?? 72,
@@ -92,14 +123,15 @@ export default function AdminPanel({ onSongUpdate }: Props) {
     setSaveError(null)
     setSaveSuccess(false)
     setAddingArr(false)
+    setSourceLabelInput('')
   }
 
   const handleSave = async () => {
     if (!selectedSong || !editState) return
-    setSaving(true)
-    setSaveError(null)
+    setSaving(true); setSaveError(null)
     try {
-      const payload = {
+      const { data: updated } = await axios.patch(`/api/songs/${selectedSong.id}`, {
+        source_labels:     editState.source_labels,
         name:              editState.arrangementName || null,
         key_signature:     editState.key_signature,
         key_number:        KEY_TO_NUMBER[editState.key_signature] ?? 0,
@@ -110,8 +142,7 @@ export default function AdminPanel({ onSongUpdate }: Props) {
         theological_depth: editState.theological_depth,
         style:             editState.style,
         is_hymn:           editState.is_hymn,
-      }
-      const { data: updated } = await axios.patch(`/api/songs/${selectedSong.id}`, payload)
+      })
       setSongs(prev => prev.map(s => s.id === updated.id ? updated : s))
       setSelectedSong(updated)
       onSongUpdate(updated)
@@ -123,6 +154,17 @@ export default function AdminPanel({ onSongUpdate }: Props) {
     } finally {
       setSaving(false)
     }
+  }
+
+  const addSourceLabel = (label: string) => {
+    const l = label.trim()
+    if (!l || editState!.source_labels.includes(l)) return
+    setEditState(prev => prev ? { ...prev, source_labels: [...prev.source_labels, l] } : prev)
+    setSourceLabelInput('')
+  }
+
+  const removeSourceLabel = (label: string) => {
+    setEditState(prev => prev ? { ...prev, source_labels: prev.source_labels.filter(l => l !== label) } : prev)
   }
 
   const addTheme = (theme: string) => {
@@ -138,11 +180,11 @@ export default function AdminPanel({ onSongUpdate }: Props) {
 
   const handleAddArrangement = async () => {
     if (!selectedSong) return
-    setAddingArr(true)
-    setSaveError(null)
+    setAddingArr(true); setSaveError(null)
     try {
       const { data } = await axios.post(`/api/songs/${selectedSong.id}/arrangements`, {
         name:           newArr.name || null,
+        source_label:   newArr.source_label || null,
         key_signature:  newArr.key_signature,
         key_number:     KEY_TO_NUMBER[newArr.key_signature] ?? 0,
         tempo_bpm:      newArr.tempo_bpm,
@@ -175,52 +217,181 @@ export default function AdminPanel({ onSongUpdate }: Props) {
     }
   }
 
+  // Settings handlers
+  const addTimeSig = async () => {
+    const v = newTimeSig.trim()
+    if (!v) return
+    setSettingsError(null)
+    try {
+      await axios.post('/api/settings/time_signatures', { value: v })
+      setSettings(prev => prev ? { ...prev, time_signatures: { ...prev.time_signatures, custom: [...prev.time_signatures.custom, v] } } : prev)
+      setNewTimeSig('')
+    } catch (err: any) {
+      setSettingsError(err.response?.data?.error ?? 'Failed to add')
+    }
+  }
+
+  const deleteTimeSig = async (value: string) => {
+    setSettingsError(null)
+    try {
+      await axios.delete(`/api/settings/time_signatures/${encodeURIComponent(value)}`)
+      setSettings(prev => prev ? { ...prev, time_signatures: { ...prev.time_signatures, custom: prev.time_signatures.custom.filter(v => v !== value) } } : prev)
+    } catch (err: any) {
+      setSettingsError(err.response?.data?.error ?? 'Failed to delete')
+    }
+  }
+
+  const addStyle = async () => {
+    const v = newStyle.trim()
+    if (!v) return
+    setSettingsError(null)
+    try {
+      await axios.post('/api/settings/styles', { value: v })
+      setSettings(prev => prev ? { ...prev, styles: { ...prev.styles, custom: [...prev.styles.custom, v] } } : prev)
+      setNewStyle('')
+    } catch (err: any) {
+      setSettingsError(err.response?.data?.error ?? 'Failed to add')
+    }
+  }
+
+  const deleteStyle = async (value: string) => {
+    setSettingsError(null)
+    try {
+      await axios.delete(`/api/settings/styles/${encodeURIComponent(value)}`)
+      setSettings(prev => prev ? { ...prev, styles: { ...prev.styles, custom: prev.styles.custom.filter(v => v !== value) } } : prev)
+    } catch (err: any) {
+      setSettingsError(err.response?.data?.error ?? 'Failed to delete')
+    }
+  }
+
   return (
     <div className="flex h-full overflow-hidden">
-      {/* Song list */}
+      {/* Left: song list (songs view) or nav (settings view) */}
       <div className="w-80 border-r border-gray-200 flex flex-col bg-white">
-        <div className="p-3 border-b border-gray-200">
-          <input
-            type="text"
-            placeholder="Search songs..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full bg-white border border-gray-300 rounded px-2.5 py-1.5 text-sm shadow-sm focus:outline-none focus:border-blue-400"
-          />
-          <p className="text-xs text-gray-400 mt-1.5">{filtered.length} songs</p>
+        {/* Sub-nav */}
+        <div className="flex border-b border-gray-200">
+          <button
+            onClick={() => setView('songs')}
+            className={`flex-1 py-2.5 text-xs font-medium transition-colors ${view === 'songs' ? 'text-blue-600 border-b-2 border-blue-600 -mb-px' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            Songs
+          </button>
+          <button
+            onClick={() => setView('settings')}
+            className={`flex-1 py-2.5 text-xs font-medium transition-colors ${view === 'settings' ? 'text-blue-600 border-b-2 border-blue-600 -mb-px' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            Settings
+          </button>
         </div>
-        <div className="flex-1 overflow-y-auto">
-          {filtered.map(song => {
-            const primary = song.arrangements.find(a => a.is_primary) ?? song.arrangements[0]
-            const isSelected = selectedSong?.id === song.id
-            return (
-              <button
-                key={song.id}
-                onClick={() => openEdit(song)}
-                className={`w-full text-left px-3 py-2.5 border-b border-gray-100 hover:bg-gray-50 transition-colors ${
-                  isSelected ? 'bg-blue-50 border-l-2 border-l-blue-500' : ''
-                }`}
-              >
-                <div className={`text-sm font-medium truncate ${isSelected ? 'text-blue-800' : 'text-gray-800'}`}>
-                  {song.title}
-                </div>
-                <div className="text-xs text-gray-500 mt-0.5 flex gap-2">
-                  <span className="truncate">{song.artist}</span>
-                  {primary && (
-                    <span className="text-gray-400 flex-shrink-0">
-                      {primary.key_signature} · {primary.tempo_bpm} BPM
-                    </span>
-                  )}
-                </div>
-              </button>
-            )
-          })}
-        </div>
+
+        {view === 'songs' && (
+          <>
+            <div className="p-3 border-b border-gray-200">
+              <input
+                type="text"
+                placeholder="Search songs..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className={`w-full px-2.5 py-1.5 text-sm ${fieldClass}`}
+              />
+              <p className="text-xs text-gray-400 mt-1.5">{filtered.length} songs</p>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {filtered.map(song => {
+                const primary = song.arrangements.find(a => a.is_primary) ?? song.arrangements[0]
+                const isSelected = selectedSong?.id === song.id
+                return (
+                  <button
+                    key={song.id}
+                    onClick={() => openEdit(song)}
+                    className={`w-full text-left px-3 py-2.5 border-b border-gray-100 hover:bg-gray-50 transition-colors ${isSelected ? 'bg-blue-50 border-l-2 border-l-blue-500' : ''}`}
+                  >
+                    <div className={`text-sm font-medium truncate ${isSelected ? 'text-blue-800' : 'text-gray-800'}`}>{song.title}</div>
+                    <div className="text-xs text-gray-500 mt-0.5 flex gap-2">
+                      <span className="truncate">{song.artist}</span>
+                      {primary && <span className="text-gray-400 flex-shrink-0">{primary.key_signature} · {primary.tempo_bpm} BPM</span>}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </>
+        )}
+
+        {view === 'settings' && (
+          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6">
+            {settingsError && <p className="text-xs text-red-500">{settingsError}</p>}
+
+            {/* Time Signatures */}
+            <div>
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Time Signatures</h3>
+              <div className="flex flex-col gap-1 mb-3">
+                {settings?.time_signatures.base.map(v => (
+                  <div key={v} className="flex items-center justify-between px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded text-xs text-gray-500">
+                    <span>{v}</span>
+                    <span className="text-gray-300 text-xs">base</span>
+                  </div>
+                ))}
+                {settings?.time_signatures.custom.map(v => (
+                  <div key={v} className="flex items-center justify-between px-2.5 py-1.5 bg-white border border-gray-200 rounded text-xs text-gray-700">
+                    <span>{v}</span>
+                    <button onClick={() => deleteTimeSig(v)} className="text-gray-400 hover:text-red-500">✕</button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  placeholder="e.g. 5/4"
+                  value={newTimeSig}
+                  onChange={e => setNewTimeSig(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addTimeSig()}
+                  className={`flex-1 px-2 py-1 text-xs ${fieldClass}`}
+                />
+                <button onClick={addTimeSig} className="text-xs px-2.5 py-1 bg-gray-700 text-white rounded hover:bg-gray-800">Add</button>
+              </div>
+            </div>
+
+            {/* Styles */}
+            <div>
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Styles</h3>
+              <div className="flex flex-col gap-1 mb-3">
+                {settings?.styles.base.map(v => (
+                  <div key={v} className="flex items-center justify-between px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded text-xs text-gray-500">
+                    <span>{v}</span>
+                    <span className="text-gray-300 text-xs">base</span>
+                  </div>
+                ))}
+                {settings?.styles.custom.map(v => (
+                  <div key={v} className="flex items-center justify-between px-2.5 py-1.5 bg-white border border-gray-200 rounded text-xs text-gray-700">
+                    <span>{v}</span>
+                    <button onClick={() => deleteStyle(v)} className="text-gray-400 hover:text-red-500">✕</button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  placeholder="e.g. contemporary"
+                  value={newStyle}
+                  onChange={e => setNewStyle(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addStyle()}
+                  className={`flex-1 px-2 py-1 text-xs ${fieldClass}`}
+                />
+                <button onClick={addStyle} className="text-xs px-2.5 py-1 bg-gray-700 text-white rounded hover:bg-gray-800">Add</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Edit panel */}
+      {/* Right: edit panel */}
       <div className="flex-1 overflow-y-auto">
-        {!selectedSong ? (
+        {view === 'settings' ? (
+          <div className="flex items-center justify-center h-full text-sm text-gray-400">
+            Select a setting category on the left to manage values
+          </div>
+        ) : !selectedSong ? (
           <div className="flex items-center justify-center h-full text-sm text-gray-400">
             Select a song to edit
           </div>
@@ -228,10 +399,35 @@ export default function AdminPanel({ onSongUpdate }: Props) {
           <div className="max-w-2xl mx-auto p-6">
             <div className="mb-6">
               <h2 className="text-lg font-semibold text-gray-800">{selectedSong.title}</h2>
-              <p className="text-sm text-gray-500">{selectedSong.artist} · {selectedSong.source_label}</p>
+              <p className="text-sm text-gray-500">{selectedSong.artist}</p>
             </div>
 
-            {/* Primary arrangement */}
+            {/* Source Labels */}
+            <section className="mb-6">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Source Labels</h3>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {editState.source_labels.map(label => (
+                  <span key={label} className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded">
+                    {label}
+                    <button onClick={() => removeSourceLabel(label)} className="hover:text-red-500 ml-0.5">✕</button>
+                  </span>
+                ))}
+                {editState.source_labels.length === 0 && <span className="text-xs text-gray-400">No source labels</span>}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Add source label..."
+                  value={sourceLabelInput}
+                  onChange={e => setSourceLabelInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addSourceLabel(sourceLabelInput)}
+                  className={`flex-1 px-2.5 py-1.5 text-sm ${fieldClass}`}
+                />
+                <button onClick={() => addSourceLabel(sourceLabelInput)} className="text-sm px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded text-gray-600">Add</button>
+              </div>
+            </section>
+
+            {/* Primary Arrangement */}
             <section className="mb-6">
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Primary Arrangement</h3>
               <div className="grid grid-cols-2 gap-4">
@@ -242,57 +438,35 @@ export default function AdminPanel({ onSongUpdate }: Props) {
                     placeholder={`e.g. Original (${selectedSong.artist})`}
                     value={editState.arrangementName}
                     onChange={e => setEditState(prev => prev ? { ...prev, arrangementName: e.target.value } : prev)}
-                    className="bg-white border border-gray-300 rounded px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:border-blue-400"
+                    className={`px-2 py-1.5 text-sm ${fieldClass}`}
                   />
                 </label>
 
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-gray-600">Key</span>
-                  <select
-                    value={editState.key_signature}
-                    onChange={e => setEditState(prev => prev ? { ...prev, key_signature: e.target.value } : prev)}
-                    className="bg-white border border-gray-300 rounded px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:border-blue-400"
-                  >
+                  <select value={editState.key_signature} onChange={e => setEditState(prev => prev ? { ...prev, key_signature: e.target.value } : prev)} className={`px-2 py-1.5 text-sm ${fieldClass}`}>
                     {KEY_SIGNATURES.map(k => <option key={k} value={k}>{k}</option>)}
                   </select>
                 </label>
 
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-gray-600">Tempo (BPM)</span>
-                  <input
-                    type="number"
-                    min={40}
-                    max={220}
-                    value={editState.tempo_bpm}
-                    onChange={e => setEditState(prev => prev ? { ...prev, tempo_bpm: parseInt(e.target.value) || 0 } : prev)}
-                    className="bg-white border border-gray-300 rounded px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:border-blue-400"
-                  />
+                  <input type="number" min={40} max={220} value={editState.tempo_bpm} onChange={e => setEditState(prev => prev ? { ...prev, tempo_bpm: parseInt(e.target.value) || 0 } : prev)} className={`px-2 py-1.5 text-sm ${fieldClass}`} />
                 </label>
 
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-gray-600">Time Signature</span>
-                  <select
-                    value={editState.time_signature}
-                    onChange={e => setEditState(prev => prev ? { ...prev, time_signature: e.target.value } : prev)}
-                    className="bg-white border border-gray-300 rounded px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:border-blue-400"
-                  >
-                    {TIME_SIGNATURES.map(ts => <option key={ts} value={ts}>{ts}</option>)}
+                  <select value={editState.time_signature} onChange={e => setEditState(prev => prev ? { ...prev, time_signature: e.target.value } : prev)} className={`px-2 py-1.5 text-sm ${fieldClass}`}>
+                    {allTimeSigs.map(ts => <option key={ts} value={ts}>{ts}</option>)}
                   </select>
                 </label>
 
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-gray-600">Energy Level (1–5)</span>
                   <div className="flex gap-1.5 mt-0.5">
-                    {[1, 2, 3, 4, 5].map(n => (
-                      <button
-                        key={n}
-                        onClick={() => setEditState(prev => prev ? { ...prev, energy_level: n } : prev)}
-                        className={`w-8 h-8 rounded text-sm font-medium transition-colors ${
-                          editState.energy_level === n
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                      >
+                    {[1,2,3,4,5].map(n => (
+                      <button key={n} onClick={() => setEditState(prev => prev ? { ...prev, energy_level: n } : prev)}
+                        className={`w-8 h-8 rounded text-sm font-medium transition-colors ${editState.energy_level === n ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                         {n}
                       </button>
                     ))}
@@ -307,42 +481,25 @@ export default function AdminPanel({ onSongUpdate }: Props) {
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-gray-600">Style</span>
-                  <select
-                    value={editState.style}
-                    onChange={e => setEditState(prev => prev ? { ...prev, style: e.target.value } : prev)}
-                    className="bg-white border border-gray-300 rounded px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:border-blue-400"
-                  >
-                    {STYLES.map(s => <option key={s} value={s}>{s}</option>)}
+                  <select value={editState.style} onChange={e => setEditState(prev => prev ? { ...prev, style: e.target.value } : prev)} className={`px-2 py-1.5 text-sm ${fieldClass}`}>
+                    {allStyles.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </label>
 
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-gray-600">Theological Depth (1–3)</span>
                   <div className="flex gap-1.5 mt-0.5">
-                    {[1, 2, 3].map(n => (
-                      <button
-                        key={n}
-                        onClick={() => setEditState(prev => prev ? { ...prev, theological_depth: n } : prev)}
-                        className={`w-8 h-8 rounded text-sm font-medium transition-colors ${
-                          editState.theological_depth === n
-                            ? 'bg-purple-600 text-white'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                      >
+                    {[1,2,3].map(n => (
+                      <button key={n} onClick={() => setEditState(prev => prev ? { ...prev, theological_depth: n } : prev)}
+                        className={`w-8 h-8 rounded text-sm font-medium transition-colors ${editState.theological_depth === n ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                         {n}
                       </button>
                     ))}
                   </div>
                 </label>
               </div>
-
               <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={editState.is_hymn}
-                  onChange={e => setEditState(prev => prev ? { ...prev, is_hymn: e.target.checked } : prev)}
-                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
+                <input type="checkbox" checked={editState.is_hymn} onChange={e => setEditState(prev => prev ? { ...prev, is_hymn: e.target.checked } : prev)} className="w-4 h-4 rounded border-gray-300" />
                 Hymn
               </label>
             </section>
@@ -357,53 +514,29 @@ export default function AdminPanel({ onSongUpdate }: Props) {
                     <button onClick={() => removeTheme(theme)} className="hover:text-red-500 ml-0.5">✕</button>
                   </span>
                 ))}
-                {editState.themes.length === 0 && (
-                  <span className="text-xs text-gray-400">No themes</span>
-                )}
+                {editState.themes.length === 0 && <span className="text-xs text-gray-400">No themes</span>}
               </div>
               <div className="flex gap-2 mb-2">
-                <input
-                  type="text"
-                  placeholder="Add theme..."
-                  value={themeInput}
-                  onChange={e => setThemeInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && addTheme(themeInput)}
-                  className="flex-1 bg-white border border-gray-300 rounded px-2.5 py-1.5 text-sm shadow-sm focus:outline-none focus:border-blue-400"
-                />
-                <button
-                  onClick={() => addTheme(themeInput)}
-                  className="text-sm px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded text-gray-600"
-                >
-                  Add
-                </button>
+                <input type="text" placeholder="Add theme..." value={themeInput} onChange={e => setThemeInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && addTheme(themeInput)} className={`flex-1 px-2.5 py-1.5 text-sm ${fieldClass}`} />
+                <button onClick={() => addTheme(themeInput)} className="text-sm px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded text-gray-600">Add</button>
               </div>
               <div className="flex flex-wrap gap-1">
                 {COMMON_THEMES.filter(t => !editState.themes.includes(t)).map(t => (
-                  <button
-                    key={t}
-                    onClick={() => addTheme(t)}
-                    className="text-xs text-gray-500 hover:text-blue-600 hover:bg-blue-50 border border-gray-200 px-1.5 py-0.5 rounded transition-colors"
-                  >
-                    + {t}
-                  </button>
+                  <button key={t} onClick={() => addTheme(t)} className="text-xs text-gray-500 hover:text-blue-600 hover:bg-blue-50 border border-gray-200 px-1.5 py-0.5 rounded transition-colors">+ {t}</button>
                 ))}
               </div>
             </section>
 
             {/* Save */}
             <div className="flex items-center gap-3 mb-8">
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
-              >
+              <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
                 {saving ? 'Saving…' : 'Save changes'}
               </button>
               {saveSuccess && <span className="text-sm text-green-600">Saved</span>}
               {saveError && <span className="text-sm text-red-500">{saveError}</span>}
             </div>
 
-            {/* Alternate arrangements */}
+            {/* Alternate Arrangements */}
             <section>
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Alternate Arrangements</h3>
               <div className="flex flex-col gap-2 mb-4">
@@ -415,80 +548,51 @@ export default function AdminPanel({ onSongUpdate }: Props) {
                     <div className="flex-1 min-w-0">
                       {arr.name && <div className="text-sm font-medium text-gray-700 truncate">{arr.name}</div>}
                       <div className="text-xs text-gray-500">
+                        {arr.source_label && <span className="mr-1.5 bg-gray-200 text-gray-600 px-1 rounded">{arr.source_label}</span>}
                         {arr.key_signature} · {arr.tempo_bpm} BPM · {arr.time_signature} · Energy {arr.energy_level}
                       </div>
                     </div>
-                    <button
-                      onClick={() => handleDeleteArrangement(arr)}
-                      className="text-xs text-gray-400 hover:text-red-500 flex-shrink-0"
-                    >
-                      Remove
-                    </button>
+                    <button onClick={() => handleDeleteArrangement(arr)} className="text-xs text-gray-400 hover:text-red-500 flex-shrink-0">Remove</button>
                   </div>
                 ))}
               </div>
 
-              {/* Add new alternate */}
+              {/* Add alternate */}
               <div className="border border-dashed border-gray-300 rounded-lg p-3">
                 <p className="text-xs font-medium text-gray-600 mb-2">Add alternate arrangement</p>
                 <div className="grid grid-cols-2 gap-2 mb-2">
                   <label className="col-span-2 flex flex-col gap-1">
                     <span className="text-xs text-gray-500">Name <span className="text-gray-400 font-normal">(optional)</span></span>
-                    <input
-                      type="text"
-                      placeholder="e.g. Church key, Acoustic, Capo 2"
-                      value={newArr.name}
-                      onChange={e => setNewArr(prev => ({ ...prev, name: e.target.value }))}
-                      className="bg-white border border-gray-300 rounded px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:border-blue-400"
-                    />
+                    <input type="text" placeholder="e.g. Church key, Acoustic, Capo 2" value={newArr.name} onChange={e => setNewArr(prev => ({ ...prev, name: e.target.value }))} className={`px-2 py-1.5 text-sm ${fieldClass}`} />
+                  </label>
+                  <label className="col-span-2 flex flex-col gap-1">
+                    <span className="text-xs text-gray-500">Source Label <span className="text-gray-400 font-normal">(optional — if from a different publisher)</span></span>
+                    <input type="text" placeholder="e.g. Elevation" value={newArr.source_label} onChange={e => setNewArr(prev => ({ ...prev, source_label: e.target.value }))} className={`px-2 py-1.5 text-sm ${fieldClass}`} />
                   </label>
                   <label className="flex flex-col gap-1">
                     <span className="text-xs text-gray-500">Key</span>
-                    <select
-                      value={newArr.key_signature}
-                      onChange={e => setNewArr(prev => ({ ...prev, key_signature: e.target.value }))}
-                      className="bg-white border border-gray-300 rounded px-1.5 py-1 text-sm shadow-sm focus:outline-none focus:border-blue-400"
-                    >
+                    <select value={newArr.key_signature} onChange={e => setNewArr(prev => ({ ...prev, key_signature: e.target.value }))} className={`px-1.5 py-1 text-sm ${fieldClass}`}>
                       {KEY_SIGNATURES.map(k => <option key={k} value={k}>{k}</option>)}
                     </select>
                   </label>
                   <label className="flex flex-col gap-1">
                     <span className="text-xs text-gray-500">BPM</span>
-                    <input
-                      type="number"
-                      min={40}
-                      max={220}
-                      value={newArr.tempo_bpm}
-                      onChange={e => setNewArr(prev => ({ ...prev, tempo_bpm: parseInt(e.target.value) || 0 }))}
-                      className="bg-white border border-gray-300 rounded px-1.5 py-1 text-sm shadow-sm focus:outline-none focus:border-blue-400"
-                    />
+                    <input type="number" min={40} max={220} value={newArr.tempo_bpm} onChange={e => setNewArr(prev => ({ ...prev, tempo_bpm: parseInt(e.target.value) || 0 }))} className={`px-1.5 py-1 text-sm ${fieldClass}`} />
                   </label>
                   <label className="flex flex-col gap-1">
                     <span className="text-xs text-gray-500">Time</span>
-                    <select
-                      value={newArr.time_signature}
-                      onChange={e => setNewArr(prev => ({ ...prev, time_signature: e.target.value }))}
-                      className="bg-white border border-gray-300 rounded px-1.5 py-1 text-sm shadow-sm focus:outline-none focus:border-blue-400"
-                    >
-                      {TIME_SIGNATURES.map(ts => <option key={ts} value={ts}>{ts}</option>)}
+                    <select value={newArr.time_signature} onChange={e => setNewArr(prev => ({ ...prev, time_signature: e.target.value }))} className={`px-1.5 py-1 text-sm ${fieldClass}`}>
+                      {allTimeSigs.map(ts => <option key={ts} value={ts}>{ts}</option>)}
                     </select>
                   </label>
                   <label className="flex flex-col gap-1">
                     <span className="text-xs text-gray-500">Energy</span>
-                    <select
-                      value={newArr.energy_level}
-                      onChange={e => setNewArr(prev => ({ ...prev, energy_level: parseInt(e.target.value) }))}
-                      className="bg-white border border-gray-300 rounded px-1.5 py-1 text-sm shadow-sm focus:outline-none focus:border-blue-400"
-                    >
+                    <select value={newArr.energy_level} onChange={e => setNewArr(prev => ({ ...prev, energy_level: parseInt(e.target.value) }))} className={`px-1.5 py-1 text-sm ${fieldClass}`}>
                       {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
                     </select>
                   </label>
                 </div>
-                <button
-                  onClick={handleAddArrangement}
-                  disabled={addingArr}
-                  className="text-xs px-3 py-1.5 bg-gray-700 text-white rounded hover:bg-gray-800 disabled:opacity-50"
-                >
+                <button onClick={handleAddArrangement} disabled={addingArr} className="text-xs px-3 py-1.5 bg-gray-700 text-white rounded hover:bg-gray-800 disabled:opacity-50">
                   {addingArr ? 'Adding…' : '+ Add arrangement'}
                 </button>
               </div>

@@ -4,7 +4,7 @@ import { searchTrack, getTrackMetadata } from './spotify';
 export interface NewSong {
   title: string;
   artist: string;
-  sourceLabel: string;
+  sourceLabels: string[];
   spotifyTrackId: string;
   album?: string;
   releasedAt?: Date;
@@ -30,7 +30,7 @@ export async function addSong(song: NewSong) {
     .insert({
       title:            song.title,
       artist:           song.artist,
-      source_label:     song.sourceLabel,
+      source_labels:    song.sourceLabels,
       album:            song.album,
       released_at:      song.releasedAt?.toISOString().split('T')[0],
       ccli_number:      song.ccliNumber,
@@ -92,7 +92,7 @@ export async function findAndAddSong(
   return addSong({
     title:          canonical.title,
     artist:         canonical.artist,
-    sourceLabel,
+    sourceLabels:   [sourceLabel],
     spotifyTrackId: canonical.spotifyTrackId,
     album:          canonical.album,
     releasedAt:     canonical.releasedAt,

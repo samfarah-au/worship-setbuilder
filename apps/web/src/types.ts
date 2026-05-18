@@ -1,6 +1,7 @@
 export interface Arrangement {
   id: string
   name?: string
+  source_label?: string
   key_signature: string
   key_number: number
   tempo_bpm: number
@@ -20,7 +21,7 @@ export interface Song {
   id: string
   title: string
   artist: string
-  source_label: string
+  source_labels: string[]
   album: string | null
   released_at: string | null
   released_year: number | null
@@ -60,15 +61,3 @@ export interface SuggestionsResponse {
   suggestions: SuggestionResult[]
 }
 
-export const SOURCE_LABELS = [
-  'Elevation',
-  'Bethel',
-  'Hillsong',
-  'Belonging Co',
-  'Lakewood',
-  'Planet Shakers',
-  'Passion',
-  'Jesus Culture',
-] as const
-
-export type SourceLabel = typeof SOURCE_LABELS[number]
