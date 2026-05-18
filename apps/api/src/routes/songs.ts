@@ -1,10 +1,81 @@
 import { Router, Request, Response } from 'express';
 import { getSupabase } from '../services/supabase';
 import { scoreSongs, SongForScoring } from '../services/scoring';
+import { searchTrack } from '../services/spotify';
+import { addSong } from '../services/songs';
 
 const router = Router();
 
 const ARRANGEMENT_SELECT = 'id, name, source_label, key_signature, key_number, tempo_bpm, time_signature, energy_level, is_primary';
+
+// GET /songs/search?title=X&artist=Y — search Spotify for candidates
+router.get('/search', async (req: Request, res: Response) => {
+  const { title, artist } = req.query;
+  if (!title) return res.status(400).json({ error: 'title is required' });
+
+  try {
+    const results = await searchTrack(title as string, (artist as string) ?? '');
+    return res.json(results);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /songs — create a new song (with optional Spotify-enriched fields)
+router.post('/', async (req: Request, res: Response) => {
+  const {
+    title, artist, source_labels, spotify_track_id,
+    album, released_at, ccli_number,
+    key_signature, key_number, tempo_bpm, time_signature, energy_level,
+    themes, theological_depth, style, is_hymn,
+  } = req.body;
+
+  if (!title || !artist || !source_labels?.length) {
+    return res.status(400).json({ error: 'title, artist, and source_labels are required' });
+  }
+
+  // Guard against duplicates by spotify_track_id
+  if (spotify_track_id) {
+    const { data: existing } = await getSupabase()
+      .from('songs')
+      .select('id, title')
+      .eq('spotify_track_id', spotify_track_id)
+      .maybeSingle();
+    if (existing) return res.status(409).json({ error: `Already in library as "${existing.title}"`, existing });
+  }
+
+  try {
+    const songRow = await addSong({
+      title, artist,
+      sourceLabels:    source_labels,
+      spotifyTrackId:  spotify_track_id ?? undefined,
+      album:           album ?? undefined,
+      releasedAt:      released_at ? new Date(released_at) : undefined,
+      ccliNumber:      ccli_number ?? undefined,
+      keySignature:    key_signature ?? undefined,
+      keyNumber:       key_number ?? undefined,
+      tempoBpm:        tempo_bpm ?? undefined,
+      timeSignature:   time_signature ?? undefined,
+      energyLevel:     energy_level ?? undefined,
+      themes:          themes ?? [],
+      theologicalDepth: theological_depth ?? 2,
+      style:           style ?? 'modern',
+      isHymn:          is_hymn ?? false,
+    });
+
+    // Return full song shape matching GET /songs
+    const { data, error } = await getSupabase()
+      .from('songs')
+      .select(`*, arrangements(${ARRANGEMENT_SELECT}), song_metadata(themes, theological_depth, style, is_hymn)`)
+      .eq('id', songRow.id)
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    return res.status(201).json(data);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 // GET /songs — list all songs with optional filters
 router.get('/', async (req: Request, res: Response) => {

@@ -56,6 +56,15 @@ export interface SuggestionResult {
   reasons: string[]
 }
 
+export interface SpotifyCandidate {
+  spotifyTrackId: string
+  title: string
+  artist: string
+  album: string
+  releasedAt: string
+  isLive: boolean
+}
+
 export interface SuggestionsResponse {
   anchor: SuggestionResult['song']
   suggestions: SuggestionResult[]

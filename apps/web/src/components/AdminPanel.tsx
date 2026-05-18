@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
-import type { Song, Arrangement } from '../types'
+import type { Song, Arrangement, SpotifyCandidate } from '../types'
 
 const KEY_SIGNATURES = ['C', 'C#', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B']
 const KEY_TO_NUMBER: Record<string, number> = {
@@ -46,9 +46,54 @@ interface Props {
   onSongUpdate: (song: Song) => void
 }
 
-type AdminView = 'songs' | 'settings'
+type AdminView = 'songs' | 'add' | 'settings'
+
+interface AddSongForm {
+  title: string
+  artist: string
+  source_labels: string[]
+  key_signature: string
+  tempo_bpm: number
+  time_signature: string
+  energy_level: number
+  themes: string[]
+  theological_depth: number
+  style: string
+  is_hymn: boolean
+  spotify_track_id: string
+  album: string
+  released_at: string
+}
 
 const fieldClass = 'bg-white border border-gray-300 rounded shadow-sm focus:outline-none focus:border-blue-400'
+
+function bpmToEnergy(bpm: number): number {
+  if (bpm < 65)  return 1
+  if (bpm < 86)  return 2
+  if (bpm < 111) return 3
+  if (bpm < 131) return 4
+  return 5
+}
+
+function BpmField({ bpm, onChange, size = 'md' }: { bpm: number; onChange: (bpm: number, energy: number) => void; size?: 'sm' | 'md' }) {
+  const inputClass = size === 'sm' ? `px-1.5 py-1 text-sm ${fieldClass}` : `px-2 py-1.5 text-sm ${fieldClass}`
+  const btnClass = `py-1.5 text-xs font-medium ${fieldClass} hover:bg-gray-50 px-2`
+  const set = (val: number) => { const b = Math.max(40, Math.min(300, val)); onChange(b, bpmToEnergy(b)) }
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex gap-1">
+        <input type="number" min={40} max={300} value={bpm}
+          onChange={e => set(parseInt(e.target.value) || 0)}
+          className={`flex-1 min-w-0 ${inputClass}`} />
+        <button type="button" onClick={() => set(Math.round(bpm * 2))} className={btnClass}>×2</button>
+        <button type="button" onClick={() => set(Math.round(bpm / 2))} className={btnClass}>÷2</button>
+      </div>
+      {bpm >= 60 && bpm <= 95 && (
+        <p className="text-xs text-amber-600">Could this be {bpm * 2} BPM?</p>
+      )}
+    </div>
+  )
+}
 
 export default function AdminPanel({ onSongUpdate }: Props) {
   const [view, setView] = useState<AdminView>('songs')
@@ -74,6 +119,19 @@ export default function AdminPanel({ onSongUpdate }: Props) {
   const [newTimeSig, setNewTimeSig] = useState('')
   const [newStyle, setNewStyle] = useState('')
   const [settingsError, setSettingsError] = useState<string | null>(null)
+
+  // Add Song view state
+  const [addSearch, setAddSearch] = useState({ title: '', artist: '' })
+  const [addSearching, setAddSearching] = useState(false)
+  const [addCandidates, setAddCandidates] = useState<SpotifyCandidate[]>([])
+  const [addSearchError, setAddSearchError] = useState<string | null>(null)
+  const [addPicked, setAddPicked] = useState<SpotifyCandidate | null>(null)
+  const [addForm, setAddForm] = useState<AddSongForm | null>(null)
+  const [addSourceInput, setAddSourceInput] = useState('')
+  const [addThemeInput, setAddThemeInput] = useState('')
+  const [addSaving, setAddSaving] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
+  const [addSuccess, setAddSuccess] = useState<string | null>(null)
 
   // Derived full lists for dropdowns
   const allTimeSigs = settings
@@ -217,6 +275,68 @@ export default function AdminPanel({ onSongUpdate }: Props) {
     }
   }
 
+  // Add Song handlers
+  const searchSpotify = async () => {
+    if (!addSearch.title.trim()) return
+    setAddSearching(true); setAddSearchError(null); setAddCandidates([]); setAddPicked(null); setAddForm(null)
+    try {
+      const { data } = await axios.get('/api/songs/search', { params: { title: addSearch.title, artist: addSearch.artist } })
+      setAddCandidates(data)
+      if (!data.length) setAddSearchError('No results found on Spotify')
+    } catch {
+      setAddSearchError('Spotify search failed')
+    } finally {
+      setAddSearching(false)
+    }
+  }
+
+  const pickCandidate = (c: SpotifyCandidate) => {
+    setAddPicked(c)
+    setAddError(null); setAddSuccess(null)
+    setAddForm({
+      title:             c.title,
+      artist:            c.artist,
+      album:             c.album,
+      released_at:       c.releasedAt ? c.releasedAt.split('T')[0] : '',
+      spotify_track_id:  c.spotifyTrackId,
+      source_labels:     [],
+      key_signature:     'G',
+      tempo_bpm:         72,
+      time_signature:    '4/4',
+      energy_level:      bpmToEnergy(72),
+      themes:            [],
+      theological_depth: 2,
+      style:             'modern',
+      is_hymn:           false,
+    })
+    setAddSourceInput(''); setAddThemeInput('')
+  }
+
+  const handleAddSong = async () => {
+    if (!addForm) return
+    if (!addForm.source_labels.length) { setAddError('Add at least one source label'); return }
+    setAddSaving(true); setAddError(null); setAddSuccess(null)
+    try {
+      const { data: created } = await axios.post('/api/songs', {
+        ...addForm,
+        key_number: KEY_TO_NUMBER[addForm.key_signature] ?? 0,
+      })
+      setSongs(prev => [...prev, created].sort((a, b) => a.title.localeCompare(b.title)))
+      setAddSuccess(`"${created.title}" added to library`)
+      setAddPicked(null); setAddForm(null); setAddCandidates([])
+      setAddSearch({ title: '', artist: '' })
+    } catch (err: any) {
+      const msg = err.response?.data?.error ?? 'Save failed'
+      if (err.response?.status === 409) {
+        setAddError(msg)
+      } else {
+        setAddError(msg)
+      }
+    } finally {
+      setAddSaving(false)
+    }
+  }
+
   // Settings handlers
   const addTimeSig = async () => {
     const v = newTimeSig.trim()
@@ -277,6 +397,12 @@ export default function AdminPanel({ onSongUpdate }: Props) {
             Songs
           </button>
           <button
+            onClick={() => setView('add')}
+            className={`flex-1 py-2.5 text-xs font-medium transition-colors ${view === 'add' ? 'text-blue-600 border-b-2 border-blue-600 -mb-px' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            + Add
+          </button>
+          <button
             onClick={() => setView('settings')}
             className={`flex-1 py-2.5 text-xs font-medium transition-colors ${view === 'settings' ? 'text-blue-600 border-b-2 border-blue-600 -mb-px' : 'text-gray-500 hover:text-gray-700'}`}
           >
@@ -316,6 +442,60 @@ export default function AdminPanel({ onSongUpdate }: Props) {
               })}
             </div>
           </>
+        )}
+
+        {view === 'add' && (
+          <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
+            <p className="text-xs text-gray-500">Search Spotify to find a song, then pick a version to add to the library.</p>
+            <div className="flex flex-col gap-1.5">
+              <input
+                type="text"
+                placeholder="Title"
+                value={addSearch.title}
+                onChange={e => setAddSearch(prev => ({ ...prev, title: e.target.value }))}
+                onKeyDown={e => e.key === 'Enter' && searchSpotify()}
+                className={`px-2.5 py-1.5 text-sm ${fieldClass}`}
+              />
+              <input
+                type="text"
+                placeholder="Artist (optional)"
+                value={addSearch.artist}
+                onChange={e => setAddSearch(prev => ({ ...prev, artist: e.target.value }))}
+                onKeyDown={e => e.key === 'Enter' && searchSpotify()}
+                className={`px-2.5 py-1.5 text-sm ${fieldClass}`}
+              />
+              <button
+                onClick={searchSpotify}
+                disabled={addSearching || !addSearch.title.trim()}
+                className="text-xs px-3 py-1.5 bg-gray-700 text-white rounded hover:bg-gray-800 disabled:opacity-50"
+              >
+                {addSearching ? 'Searching…' : 'Search Spotify'}
+              </button>
+            </div>
+
+            {addSearchError && <p className="text-xs text-red-500">{addSearchError}</p>}
+
+            {addCandidates.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Results</p>
+                {addCandidates.map(c => (
+                  <button
+                    key={c.spotifyTrackId}
+                    onClick={() => pickCandidate(c)}
+                    className={`text-left px-2.5 py-2 rounded border text-xs transition-colors ${
+                      addPicked?.spotifyTrackId === c.spotifyTrackId
+                        ? 'border-blue-400 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="font-medium text-gray-800 truncate">{c.title}</div>
+                    <div className="text-gray-500 truncate">{c.artist} · {c.album}</div>
+                    <div className="text-gray-400">{c.releasedAt?.split('-')[0]}{c.isLive && ' · Live'}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {view === 'settings' && (
@@ -387,7 +567,172 @@ export default function AdminPanel({ onSongUpdate }: Props) {
 
       {/* Right: edit panel */}
       <div className="flex-1 overflow-y-auto">
-        {view === 'settings' ? (
+        {view === 'add' ? (
+          !addForm ? (
+            <div className="flex items-center justify-center h-full text-sm text-gray-400">
+              {addSuccess
+                ? <span className="text-green-600">{addSuccess}</span>
+                : 'Search and pick a Spotify result to continue'}
+            </div>
+          ) : (
+            <div className="max-w-2xl mx-auto p-6">
+              <div className="mb-6">
+                <h2 className="text-lg font-semibold text-gray-800">{addForm.title}</h2>
+                <p className="text-sm text-gray-500">{addForm.artist}{addForm.album ? ` · ${addForm.album}` : ''}{addForm.released_at ? ` · ${addForm.released_at.split('-')[0]}` : ''}</p>
+              </div>
+
+              {/* Source Labels */}
+              <section className="mb-6">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Source Labels</h3>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {addForm.source_labels.map(l => (
+                    <span key={l} className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded">
+                      {l}
+                      <button onClick={() => setAddForm(prev => prev ? { ...prev, source_labels: prev.source_labels.filter(x => x !== l) } : prev)} className="hover:text-red-500 ml-0.5">✕</button>
+                    </span>
+                  ))}
+                  {addForm.source_labels.length === 0 && <span className="text-xs text-gray-400">No source labels</span>}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Add source label..."
+                    value={addSourceInput}
+                    onChange={e => setAddSourceInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        const l = addSourceInput.trim()
+                        if (l && !addForm.source_labels.includes(l)) setAddForm(prev => prev ? { ...prev, source_labels: [...prev.source_labels, l] } : prev)
+                        setAddSourceInput('')
+                      }
+                    }}
+                    className={`flex-1 px-2.5 py-1.5 text-sm ${fieldClass}`}
+                  />
+                  <button
+                    onClick={() => {
+                      const l = addSourceInput.trim()
+                      if (l && !addForm.source_labels.includes(l)) setAddForm(prev => prev ? { ...prev, source_labels: [...prev.source_labels, l] } : prev)
+                      setAddSourceInput('')
+                    }}
+                    className="text-sm px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded text-gray-600"
+                  >Add</button>
+                </div>
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {[...new Set(songs.flatMap(s => s.source_labels))].sort()
+                    .filter(l => !addForm.source_labels.includes(l))
+                    .map(l => (
+                      <button key={l} onClick={() => setAddForm(prev => prev ? { ...prev, source_labels: [...prev.source_labels, l] } : prev)} className="text-xs text-gray-500 hover:text-blue-600 hover:bg-blue-50 border border-gray-200 px-1.5 py-0.5 rounded transition-colors">+ {l}</button>
+                    ))}
+                </div>
+              </section>
+
+              {/* Arrangement */}
+              <section className="mb-6">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Arrangement</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs text-gray-600">Key</span>
+                    <select value={addForm.key_signature} onChange={e => setAddForm(prev => prev ? { ...prev, key_signature: e.target.value } : prev)} className={`px-2 py-1.5 text-sm ${fieldClass}`}>
+                      {KEY_SIGNATURES.map(k => <option key={k} value={k}>{k}</option>)}
+                    </select>
+                  </label>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-gray-600">Tempo (BPM)</span>
+                    <BpmField bpm={addForm.tempo_bpm} onChange={(b, e) => setAddForm(prev => prev ? { ...prev, tempo_bpm: b, energy_level: e } : prev)} />
+                  </div>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs text-gray-600">Time Signature</span>
+                    <select value={addForm.time_signature} onChange={e => setAddForm(prev => prev ? { ...prev, time_signature: e.target.value } : prev)} className={`px-2 py-1.5 text-sm ${fieldClass}`}>
+                      {allTimeSigs.map(ts => <option key={ts} value={ts}>{ts}</option>)}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs text-gray-600">Energy Level (1–5)</span>
+                    <div className="flex gap-1.5 mt-0.5">
+                      {[1,2,3,4,5].map(n => (
+                        <button key={n} onClick={() => setAddForm(prev => prev ? { ...prev, energy_level: n } : prev)}
+                          className={`w-8 h-8 rounded text-sm font-medium transition-colors ${addForm.energy_level === n ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </label>
+                </div>
+              </section>
+
+              {/* Metadata */}
+              <section className="mb-6">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Metadata</h3>
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs text-gray-600">Style</span>
+                    <select value={addForm.style} onChange={e => setAddForm(prev => prev ? { ...prev, style: e.target.value } : prev)} className={`px-2 py-1.5 text-sm ${fieldClass}`}>
+                      {allStyles.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs text-gray-600">Theological Depth (1–3)</span>
+                    <div className="flex gap-1.5 mt-0.5">
+                      {[1,2,3].map(n => (
+                        <button key={n} onClick={() => setAddForm(prev => prev ? { ...prev, theological_depth: n } : prev)}
+                          className={`w-8 h-8 rounded text-sm font-medium transition-colors ${addForm.theological_depth === n ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </label>
+                </div>
+                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+                  <input type="checkbox" checked={addForm.is_hymn} onChange={e => setAddForm(prev => prev ? { ...prev, is_hymn: e.target.checked } : prev)} className="w-4 h-4 rounded border-gray-300" />
+                  Hymn
+                </label>
+              </section>
+
+              {/* Themes */}
+              <section className="mb-6">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Themes</h3>
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {addForm.themes.map(t => (
+                    <span key={t} className="inline-flex items-center gap-1 text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded">
+                      {t}
+                      <button onClick={() => setAddForm(prev => prev ? { ...prev, themes: prev.themes.filter(x => x !== t) } : prev)} className="hover:text-red-500 ml-0.5">✕</button>
+                    </span>
+                  ))}
+                  {addForm.themes.length === 0 && <span className="text-xs text-gray-400">No themes</span>}
+                </div>
+                <div className="flex gap-2 mb-2">
+                  <input type="text" placeholder="Add theme..." value={addThemeInput} onChange={e => setAddThemeInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        const t = addThemeInput.trim().toLowerCase()
+                        if (t && !addForm.themes.includes(t)) setAddForm(prev => prev ? { ...prev, themes: [...prev.themes, t] } : prev)
+                        setAddThemeInput('')
+                      }
+                    }}
+                    className={`flex-1 px-2.5 py-1.5 text-sm ${fieldClass}`} />
+                  <button onClick={() => {
+                    const t = addThemeInput.trim().toLowerCase()
+                    if (t && !addForm.themes.includes(t)) setAddForm(prev => prev ? { ...prev, themes: [...prev.themes, t] } : prev)
+                    setAddThemeInput('')
+                  }} className="text-sm px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded text-gray-600">Add</button>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {COMMON_THEMES.filter(t => !addForm.themes.includes(t)).map(t => (
+                    <button key={t} onClick={() => setAddForm(prev => prev ? { ...prev, themes: [...prev.themes, t] } : prev)} className="text-xs text-gray-500 hover:text-blue-600 hover:bg-blue-50 border border-gray-200 px-1.5 py-0.5 rounded transition-colors">+ {t}</button>
+                  ))}
+                </div>
+              </section>
+
+              <div className="flex items-center gap-3">
+                <button onClick={handleAddSong} disabled={addSaving} className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
+                  {addSaving ? 'Adding…' : 'Add to library'}
+                </button>
+                <button onClick={() => { setAddForm(null); setAddPicked(null) }} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">Cancel</button>
+                {addError && <span className="text-sm text-red-500">{addError}</span>}
+              </div>
+            </div>
+          )
+        ) : view === 'settings' ? (
           <div className="flex items-center justify-center h-full text-sm text-gray-400">
             Select a setting category on the left to manage values
           </div>
@@ -425,6 +770,13 @@ export default function AdminPanel({ onSongUpdate }: Props) {
                 />
                 <button onClick={() => addSourceLabel(sourceLabelInput)} className="text-sm px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded text-gray-600">Add</button>
               </div>
+              <div className="flex flex-wrap gap-1 mt-2">
+                {[...new Set(songs.flatMap(s => s.source_labels))].sort()
+                  .filter(l => !editState.source_labels.includes(l))
+                  .map(l => (
+                    <button key={l} onClick={() => addSourceLabel(l)} className="text-xs text-gray-500 hover:text-blue-600 hover:bg-blue-50 border border-gray-200 px-1.5 py-0.5 rounded transition-colors">+ {l}</button>
+                  ))}
+              </div>
             </section>
 
             {/* Primary Arrangement */}
@@ -449,10 +801,10 @@ export default function AdminPanel({ onSongUpdate }: Props) {
                   </select>
                 </label>
 
-                <label className="flex flex-col gap-1">
+                <div className="flex flex-col gap-1">
                   <span className="text-xs text-gray-600">Tempo (BPM)</span>
-                  <input type="number" min={40} max={220} value={editState.tempo_bpm} onChange={e => setEditState(prev => prev ? { ...prev, tempo_bpm: parseInt(e.target.value) || 0 } : prev)} className={`px-2 py-1.5 text-sm ${fieldClass}`} />
-                </label>
+                  <BpmField bpm={editState.tempo_bpm} onChange={(b, e) => setEditState(prev => prev ? { ...prev, tempo_bpm: b, energy_level: e } : prev)} />
+                </div>
 
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-gray-600">Time Signature</span>
@@ -565,32 +917,44 @@ export default function AdminPanel({ onSongUpdate }: Props) {
                     <span className="text-xs text-gray-500">Name <span className="text-gray-400 font-normal">(optional)</span></span>
                     <input type="text" placeholder="e.g. Church key, Acoustic, Capo 2" value={newArr.name} onChange={e => setNewArr(prev => ({ ...prev, name: e.target.value }))} className={`px-2 py-1.5 text-sm ${fieldClass}`} />
                   </label>
-                  <label className="col-span-2 flex flex-col gap-1">
+                  <div className="col-span-2 flex flex-col gap-1">
                     <span className="text-xs text-gray-500">Source Label <span className="text-gray-400 font-normal">(optional — if from a different publisher)</span></span>
                     <input type="text" placeholder="e.g. Elevation" value={newArr.source_label} onChange={e => setNewArr(prev => ({ ...prev, source_label: e.target.value }))} className={`px-2 py-1.5 text-sm ${fieldClass}`} />
-                  </label>
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {[...new Set(songs.flatMap(s => s.source_labels))].sort()
+                        .filter(l => l !== newArr.source_label)
+                        .map(l => (
+                          <button key={l} type="button" onClick={() => setNewArr(prev => ({ ...prev, source_label: l }))} className="text-xs text-gray-500 hover:text-blue-600 hover:bg-blue-50 border border-gray-200 px-1.5 py-0.5 rounded transition-colors">{l}</button>
+                        ))}
+                    </div>
+                  </div>
                   <label className="flex flex-col gap-1">
                     <span className="text-xs text-gray-500">Key</span>
                     <select value={newArr.key_signature} onChange={e => setNewArr(prev => ({ ...prev, key_signature: e.target.value }))} className={`px-1.5 py-1 text-sm ${fieldClass}`}>
                       {KEY_SIGNATURES.map(k => <option key={k} value={k}>{k}</option>)}
                     </select>
                   </label>
-                  <label className="flex flex-col gap-1">
+                  <div className="flex flex-col gap-1">
                     <span className="text-xs text-gray-500">BPM</span>
-                    <input type="number" min={40} max={220} value={newArr.tempo_bpm} onChange={e => setNewArr(prev => ({ ...prev, tempo_bpm: parseInt(e.target.value) || 0 }))} className={`px-1.5 py-1 text-sm ${fieldClass}`} />
-                  </label>
+                    <BpmField bpm={newArr.tempo_bpm} size="sm" onChange={(b, e) => setNewArr(prev => ({ ...prev, tempo_bpm: b, energy_level: e }))} />
+                  </div>
                   <label className="flex flex-col gap-1">
                     <span className="text-xs text-gray-500">Time</span>
                     <select value={newArr.time_signature} onChange={e => setNewArr(prev => ({ ...prev, time_signature: e.target.value }))} className={`px-1.5 py-1 text-sm ${fieldClass}`}>
                       {allTimeSigs.map(ts => <option key={ts} value={ts}>{ts}</option>)}
                     </select>
                   </label>
-                  <label className="flex flex-col gap-1">
+                  <div className="flex flex-col gap-1">
                     <span className="text-xs text-gray-500">Energy</span>
-                    <select value={newArr.energy_level} onChange={e => setNewArr(prev => ({ ...prev, energy_level: parseInt(e.target.value) }))} className={`px-1.5 py-1 text-sm ${fieldClass}`}>
-                      {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
-                    </select>
-                  </label>
+                    <div className="flex gap-1 mt-0.5">
+                      {[1,2,3,4,5].map(n => (
+                        <button key={n} type="button" onClick={() => setNewArr(prev => ({ ...prev, energy_level: n }))}
+                          className={`w-7 h-7 rounded text-xs font-medium transition-colors ${newArr.energy_level === n ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
                 <button onClick={handleAddArrangement} disabled={addingArr} className="text-xs px-3 py-1.5 bg-gray-700 text-white rounded hover:bg-gray-800 disabled:opacity-50">
                   {addingArr ? 'Adding…' : '+ Add arrangement'}
