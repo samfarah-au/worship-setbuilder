@@ -63,6 +63,17 @@ export default function AdminPanel({ onSongUpdate }: Props) {
     s.artist.toLowerCase().includes(search.toLowerCase())
   )
 
+  const primaryDefaults = (song: Song) => {
+    const primary = song.arrangements.find(a => a.is_primary) ?? song.arrangements[0]
+    return {
+      name:           '',
+      key_signature:  primary?.key_signature  ?? 'G',
+      tempo_bpm:      primary?.tempo_bpm      ?? 72,
+      time_signature: primary?.time_signature ?? '4/4',
+      energy_level:   primary?.energy_level   ?? 3,
+    }
+  }
+
   const openEdit = (song: Song) => {
     setSelectedSong(song)
     const primary = song.arrangements.find(a => a.is_primary) ?? song.arrangements[0]
@@ -77,6 +88,7 @@ export default function AdminPanel({ onSongUpdate }: Props) {
       style:             song.song_metadata?.style ?? 'modern',
       is_hymn:           song.song_metadata?.is_hymn ?? false,
     })
+    setNewArr(primaryDefaults(song))
     setSaveError(null)
     setSaveSuccess(false)
     setAddingArr(false)
@@ -141,7 +153,7 @@ export default function AdminPanel({ onSongUpdate }: Props) {
       setSelectedSong(updated)
       setSongs(prev => prev.map(s => s.id === updated.id ? updated : s))
       onSongUpdate(updated)
-      setNewArr({ name: '', key_signature: 'G', tempo_bpm: 72, time_signature: '4/4', energy_level: 3 })
+      setNewArr(primaryDefaults(updated))
     } catch (err: any) {
       setSaveError(err.response?.data?.error ?? 'Failed to add arrangement')
     } finally {

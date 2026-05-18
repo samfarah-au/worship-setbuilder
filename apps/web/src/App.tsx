@@ -136,7 +136,7 @@ export default function App() {
               songs={songs}
               selectedSong={selectedSong}
               onSelectAnchor={setSelectedSong}
-              onClearAnchor={() => setSelectedSong(null)}
+              onClearAnchor={() => { setSelectedSong(null); setSuggestions([]) }}
               suggestions={suggestions}
               loading={loading}
               onAddToSet={addToSet}
