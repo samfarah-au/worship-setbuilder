@@ -4,6 +4,7 @@ interface Props {
   setList: Song[]
   onRemove: (id: string) => void
   onReorder: (songs: Song[]) => void
+  onUseAsAnchor: (song: Song) => void
 }
 
 function getFlowWarning(a: Song, b: Song): string | null {
@@ -25,7 +26,7 @@ function getFlowWarning(a: Song, b: Song): string | null {
   return null
 }
 
-export default function SetBuilder({ setList, onRemove, onReorder }: Props) {
+export default function SetBuilder({ setList, onRemove, onReorder, onUseAsAnchor }: Props) {
   const moveUp = (index: number) => {
     if (index === 0) return
     const updated = [...setList]
@@ -90,6 +91,13 @@ export default function SetBuilder({ setList, onRemove, onReorder }: Props) {
                     className="text-gray-300 hover:text-gray-500 text-xs leading-none"
                   >▼</button>
                 </div>
+                <button
+                    onClick={() => onUseAsAnchor(song)}
+                    className="text-xs text-blue-400 hover:text-blue-600 px-1"
+                    title="Use as anchor"
+                    >
+                    ⚓
+                </button>
                 <button
                   onClick={() => onRemove(song.id)}
                   className="text-gray-300 hover:text-red-400 text-xs"

@@ -3,68 +3,108 @@ import type { Song, SuggestionResult } from '../types'
 interface Props {
   songs: Song[]
   selectedSong: Song | null
-  onSelect: (song: Song) => void
+  onSelectAnchor: (song: Song) => void
+  onClearAnchor: () => void
   suggestions: SuggestionResult[]
   loading: boolean
   onAddToSet: (song: Song) => void
+  onAddPairToSet: (song: Song) => void
+  search: string
+  onSearchChange: (val: string) => void
 }
 
-export default function SongList({ songs, selectedSong, onSelect, suggestions, loading, onAddToSet }: Props) {
+export default function SongList({
+  songs, selectedSong, onSelectAnchor, onClearAnchor,
+  suggestions, loading, onAddToSet, onAddPairToSet,
+  search, onSearchChange,
+}: Props) {
   const suggestionMap = new Map(suggestions.map(s => [s.song.id, s]))
+
+  // Filter by search
+  const filtered = songs.filter(s =>
+    s.title.toLowerCase().includes(search.toLowerCase()) ||
+    s.artist.toLowerCase().includes(search.toLowerCase())
+  )
+
+  // Sort: if anchor selected, sort by score descending
+  // anchor song pinned at top, unscored songs at bottom
+  const sorted = selectedSong
+    ? [
+        // Anchor first
+        ...filtered.filter(s => s.id === selectedSong.id),
+        // Scored suggestions in order
+        ...suggestions
+          .map(s => filtered.find(f => f.id === s.song.id))
+          .filter((s): s is Song => !!s),
+        // Remaining songs not in suggestions
+        ...filtered.filter(s =>
+          s.id !== selectedSong.id && !suggestionMap.has(s.id)
+        ),
+      ]
+    : filtered.sort((a, b) => a.title.localeCompare(b.title))
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Selected song banner */}
+      {/* Search bar */}
+      <div className="p-3 border-b border-gray-200 bg-white">
+        <input
+          type="text"
+          placeholder="Search songs or artists..."
+          value={search}
+          onChange={e => onSearchChange(e.target.value)}
+          className="w-full text-sm border border-gray-200 rounded px-3 py-1.5 bg-gray-50 focus:outline-none focus:border-gray-400"
+        />
+      </div>
+
+      {/* Anchor banner */}
       {selectedSong && (
         <div className="bg-blue-50 border-b border-blue-200 px-4 py-2.5 flex items-center gap-3">
           <div className="flex-1">
             <div className="font-medium text-blue-800">{selectedSong.title}</div>
             <div className="text-xs text-blue-600">
               {selectedSong.artist} · {selectedSong.arrangements[0]?.key_signature} · {selectedSong.arrangements[0]?.tempo_bpm} BPM · {selectedSong.released_at?.split('-')[0]}
+              {' '}· <span className="italic">anchor song</span>
             </div>
           </div>
           <button
-            onClick={() => onAddToSet(selectedSong)}
-            className="text-xs bg-blue-600 text-white px-2.5 py-1 rounded hover:bg-blue-700"
+            onClick={onClearAnchor}
+            className="text-xs text-blue-400 hover:text-blue-600 px-2"
           >
-            + Add to set
+            ✕ clear
           </button>
         </div>
       )}
 
       {/* Song list */}
       <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
-        {!selectedSong && (
-          <p className="text-xs text-gray-400 text-center py-4">
-            Select a song to see suggestions
-          </p>
-        )}
-
         {loading && (
-          <p className="text-xs text-gray-400 text-center py-4">
-            Finding suggestions...
-          </p>
+          <p className="text-xs text-gray-400 text-center py-4">Finding suggestions...</p>
         )}
 
-        {songs.map(song => {
+        {!loading && sorted.length === 0 && (
+          <p className="text-xs text-gray-400 text-center py-4">No songs found</p>
+        )}
+
+        {!loading && sorted.map(song => {
           const suggestion = suggestionMap.get(song.id)
-          const isSelected = selectedSong?.id === song.id
+          const isAnchor = selectedSong?.id === song.id
           const score = suggestion ? Math.round(suggestion.total * 100) : null
 
           return (
             <div
               key={song.id}
-              onClick={() => onSelect(song)}
-              className={`border rounded-lg p-3 cursor-pointer transition-all ${
-                isSelected
-                  ? 'border-blue-300 bg-blue-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+              onClick={() => !isAnchor && onSelectAnchor(song)}
+              className={`border rounded-lg p-3 transition-all ${
+                isAnchor
+                  ? 'border-blue-300 bg-blue-50 cursor-default'
+                  : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50 cursor-pointer'
               }`}
             >
               <div className="flex items-start gap-2">
                 <div className="flex-1">
-                  <div className={`font-medium ${isSelected ? 'text-blue-800' : 'text-gray-800'}`}>
+                  <div className={`font-medium ${isAnchor ? 'text-blue-800' : 'text-gray-800'}`}>
                     {song.title}
+                    {isAnchor && <span className="ml-2 text-xs font-normal text-blue-500">anchor</span>}
                   </div>
                   <div className="text-xs text-gray-500 mt-0.5">
                     {song.artist} · {song.source_label} · {song.released_at?.split('-')[0]}
@@ -90,36 +130,40 @@ export default function SongList({ songs, selectedSong, onSelect, suggestions, l
                     ))}
                   </div>
 
-                  {/* Suggestion reasons */}
-                  {suggestion && !isSelected && (
-                    <div className="mt-2 flex flex-col gap-1">
+                  {/* Match reasons */}
+                  {suggestion && !isAnchor && (
+                    <div className="mt-2 flex flex-col gap-0.5">
                       {suggestion.reasons.slice(0, 2).map((reason, i) => (
-                        <div key={i} className="text-xs text-gray-500">
-                          → {reason}
-                        </div>
+                        <div key={i} className="text-xs text-gray-400">→ {reason}</div>
                       ))}
                     </div>
                   )}
                 </div>
 
-                {/* Score badge */}
-                {score !== null && !isSelected && (
-                  <div className={`text-sm font-semibold flex-shrink-0 ${
-                    score >= 80 ? 'text-green-600' :
-                    score >= 60 ? 'text-purple-600' : 'text-gray-400'
-                  }`}>
-                    {score}%
-                  </div>
-                )}
-
-                {!isSelected && (
+                {/* Score + add button */}
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  {score !== null && !isAnchor && (
+                    <div className={`text-sm font-semibold ${
+                      score >= 80 ? 'text-green-600' :
+                      score >= 60 ? 'text-purple-600' : 'text-gray-400'
+                    }`}>
+                      {score}%
+                    </div>
+                  )}
                   <button
-                    onClick={e => { e.stopPropagation(); onAddToSet(song) }}
-                    className="text-xs text-gray-400 hover:text-gray-600 flex-shrink-0 px-1"
+                    onClick={e => {
+                    e.stopPropagation()
+                    if (selectedSong && !isAnchor) {
+                        onAddPairToSet(song)
+                    } else {
+                        onAddToSet(song)
+                    }
+                    }}
+                    className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-0.5 rounded"
                   >
-                    +
+                    {selectedSong && !isAnchor ? '+ add pair' : '+ add'}
                   </button>
-                )}
+                </div>
               </div>
             </div>
           )
