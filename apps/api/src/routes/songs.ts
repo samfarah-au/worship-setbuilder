@@ -19,7 +19,7 @@ router.get('/', async (req: Request, res: Response) => {
     .select(`
       *,
       arrangements(
-        id, key_signature, key_number, tempo_bpm,
+        id, name, key_signature, key_number, tempo_bpm,
         time_signature, energy_level, is_primary
       ),
       song_metadata(
@@ -69,7 +69,7 @@ router.get('/', async (req: Request, res: Response) => {
 router.patch('/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   const {
-    key_signature, key_number, tempo_bpm, time_signature, energy_level,
+    name, key_signature, key_number, tempo_bpm, time_signature, energy_level,
     themes, theological_depth, style, is_hymn,
   } = req.body;
 
@@ -77,6 +77,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
 
   // Update primary arrangement if musical fields provided
   const arrangementFields: Record<string, unknown> = {};
+  if (name            !== undefined) arrangementFields.name            = name;
   if (key_signature   !== undefined) arrangementFields.key_signature   = key_signature;
   if (key_number      !== undefined) arrangementFields.key_number      = key_number;
   if (tempo_bpm       !== undefined) arrangementFields.tempo_bpm       = tempo_bpm;
@@ -125,7 +126,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
 // POST /songs/:id/arrangements — add an alternate arrangement
 router.post('/:id/arrangements', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { key_signature, key_number, tempo_bpm, time_signature, energy_level } = req.body;
+  const { name, key_signature, key_number, tempo_bpm, time_signature, energy_level } = req.body;
 
   if (!key_signature || key_number === undefined || !tempo_bpm || !time_signature || !energy_level) {
     return res.status(400).json({ error: 'key_signature, key_number, tempo_bpm, time_signature, energy_level are required' });
@@ -135,6 +136,7 @@ router.post('/:id/arrangements', async (req: Request, res: Response) => {
     .from('arrangements')
     .insert({
       song_id: id,
+      name: name ?? null,
       key_signature,
       key_number,
       tempo_bpm,
@@ -207,7 +209,7 @@ router.get('/:id/suggestions', async (req: Request, res: Response) => {
     .select(`
       *,
       arrangements(
-        id, key_signature, key_number, tempo_bpm,
+        id, name, key_signature, key_number, tempo_bpm,
         time_signature, energy_level, is_primary
       ),
       song_metadata(themes)

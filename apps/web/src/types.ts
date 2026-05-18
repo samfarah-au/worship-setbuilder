@@ -1,5 +1,6 @@
 export interface Arrangement {
   id: string
+  name?: string
   key_signature: string
   key_number: number
   tempo_bpm: number

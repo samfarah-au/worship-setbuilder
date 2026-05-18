@@ -16,6 +16,7 @@ const COMMON_THEMES = [
 ]
 
 interface EditState {
+  arrangementName: string
   key_signature: string
   tempo_bpm: number
   time_signature: string
@@ -27,13 +28,18 @@ interface EditState {
 }
 
 interface NewArrangement {
+  name: string
   key_signature: string
   tempo_bpm: number
   time_signature: string
   energy_level: number
 }
 
-export default function AdminPanel() {
+interface Props {
+  onSongUpdate: (song: Song) => void
+}
+
+export default function AdminPanel({ onSongUpdate }: Props) {
   const [songs, setSongs] = useState<Song[]>([])
   const [search, setSearch] = useState('')
   const [selectedSong, setSelectedSong] = useState<Song | null>(null)
@@ -42,7 +48,9 @@ export default function AdminPanel() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [themeInput, setThemeInput] = useState('')
-  const [newArr, setNewArr] = useState<NewArrangement>({ key_signature: 'G', tempo_bpm: 72, time_signature: '4/4', energy_level: 3 })
+  const [newArr, setNewArr] = useState<NewArrangement>({
+    name: '', key_signature: 'G', tempo_bpm: 72, time_signature: '4/4', energy_level: 3,
+  })
   const [addingArr, setAddingArr] = useState(false)
   const successTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -59,6 +67,7 @@ export default function AdminPanel() {
     setSelectedSong(song)
     const primary = song.arrangements.find(a => a.is_primary) ?? song.arrangements[0]
     setEditState({
+      arrangementName:   primary?.name ?? '',
       key_signature:     primary?.key_signature ?? 'G',
       tempo_bpm:         primary?.tempo_bpm ?? 72,
       time_signature:    primary?.time_signature ?? '4/4',
@@ -79,6 +88,7 @@ export default function AdminPanel() {
     setSaveError(null)
     try {
       const payload = {
+        name:              editState.arrangementName || null,
         key_signature:     editState.key_signature,
         key_number:        KEY_TO_NUMBER[editState.key_signature] ?? 0,
         tempo_bpm:         editState.tempo_bpm,
@@ -92,6 +102,7 @@ export default function AdminPanel() {
       const { data: updated } = await axios.patch(`/api/songs/${selectedSong.id}`, payload)
       setSongs(prev => prev.map(s => s.id === updated.id ? updated : s))
       setSelectedSong(updated)
+      onSongUpdate(updated)
       setSaveSuccess(true)
       if (successTimer.current) clearTimeout(successTimer.current)
       successTimer.current = setTimeout(() => setSaveSuccess(false), 2500)
@@ -116,15 +127,21 @@ export default function AdminPanel() {
   const handleAddArrangement = async () => {
     if (!selectedSong) return
     setAddingArr(true)
+    setSaveError(null)
     try {
       const { data } = await axios.post(`/api/songs/${selectedSong.id}/arrangements`, {
-        ...newArr,
-        key_number: KEY_TO_NUMBER[newArr.key_signature] ?? 0,
+        name:           newArr.name || null,
+        key_signature:  newArr.key_signature,
+        key_number:     KEY_TO_NUMBER[newArr.key_signature] ?? 0,
+        tempo_bpm:      newArr.tempo_bpm,
+        time_signature: newArr.time_signature,
+        energy_level:   newArr.energy_level,
       })
       const updated = { ...selectedSong, arrangements: [...selectedSong.arrangements, data] }
       setSelectedSong(updated)
       setSongs(prev => prev.map(s => s.id === updated.id ? updated : s))
-      setNewArr({ key_signature: 'G', tempo_bpm: 72, time_signature: '4/4', energy_level: 3 })
+      onSongUpdate(updated)
+      setNewArr({ name: '', key_signature: 'G', tempo_bpm: 72, time_signature: '4/4', energy_level: 3 })
     } catch (err: any) {
       setSaveError(err.response?.data?.error ?? 'Failed to add arrangement')
     } finally {
@@ -134,12 +151,13 @@ export default function AdminPanel() {
 
   const handleDeleteArrangement = async (arr: Arrangement) => {
     if (!selectedSong) return
-    if (!confirm(`Remove alternate arrangement in ${arr.key_signature}?`)) return
+    if (!confirm(`Remove arrangement "${arr.name || arr.key_signature}"?`)) return
     try {
       await axios.delete(`/api/songs/arrangements/${arr.id}`)
       const updated = { ...selectedSong, arrangements: selectedSong.arrangements.filter(a => a.id !== arr.id) }
       setSelectedSong(updated)
       setSongs(prev => prev.map(s => s.id === updated.id ? updated : s))
+      onSongUpdate(updated)
     } catch (err: any) {
       setSaveError(err.response?.data?.error ?? 'Failed to delete arrangement')
     }
@@ -175,8 +193,12 @@ export default function AdminPanel() {
                   {song.title}
                 </div>
                 <div className="text-xs text-gray-500 mt-0.5 flex gap-2">
-                  <span>{song.artist}</span>
-                  {primary && <span className="text-gray-400">{primary.key_signature} · {primary.tempo_bpm} BPM</span>}
+                  <span className="truncate">{song.artist}</span>
+                  {primary && (
+                    <span className="text-gray-400 flex-shrink-0">
+                      {primary.key_signature} · {primary.tempo_bpm} BPM
+                    </span>
+                  )}
                 </div>
               </button>
             )
@@ -197,10 +219,21 @@ export default function AdminPanel() {
               <p className="text-sm text-gray-500">{selectedSong.artist} · {selectedSong.source_label}</p>
             </div>
 
-            {/* Musical data */}
+            {/* Primary arrangement */}
             <section className="mb-6">
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Primary Arrangement</h3>
               <div className="grid grid-cols-2 gap-4">
+                <label className="col-span-2 flex flex-col gap-1">
+                  <span className="text-xs text-gray-600">Arrangement Name <span className="text-gray-400 font-normal">(optional)</span></span>
+                  <input
+                    type="text"
+                    placeholder={`e.g. Original (${selectedSong.artist})`}
+                    value={editState.arrangementName}
+                    onChange={e => setEditState(prev => prev ? { ...prev, arrangementName: e.target.value } : prev)}
+                    className="border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+                  />
+                </label>
+
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-gray-600">Key</span>
                   <select
@@ -366,12 +399,16 @@ export default function AdminPanel() {
                   <p className="text-xs text-gray-400">No alternate arrangements</p>
                 )}
                 {selectedSong.arrangements.filter(a => !a.is_primary).map(arr => (
-                  <div key={arr.id} className="flex items-center gap-3 border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 text-sm">
-                    <span className="font-medium text-gray-700">{arr.key_signature}</span>
-                    <span className="text-gray-500">{arr.tempo_bpm} BPM · {arr.time_signature} · Energy {arr.energy_level}</span>
+                  <div key={arr.id} className="flex items-center gap-3 border border-gray-200 rounded-lg px-3 py-2 bg-gray-50">
+                    <div className="flex-1 min-w-0">
+                      {arr.name && <div className="text-sm font-medium text-gray-700 truncate">{arr.name}</div>}
+                      <div className="text-xs text-gray-500">
+                        {arr.key_signature} · {arr.tempo_bpm} BPM · {arr.time_signature} · Energy {arr.energy_level}
+                      </div>
+                    </div>
                     <button
                       onClick={() => handleDeleteArrangement(arr)}
-                      className="ml-auto text-xs text-gray-400 hover:text-red-500"
+                      className="text-xs text-gray-400 hover:text-red-500 flex-shrink-0"
                     >
                       Remove
                     </button>
@@ -382,7 +419,17 @@ export default function AdminPanel() {
               {/* Add new alternate */}
               <div className="border border-dashed border-gray-300 rounded-lg p-3">
                 <p className="text-xs font-medium text-gray-600 mb-2">Add alternate arrangement</p>
-                <div className="grid grid-cols-4 gap-2 mb-2">
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <label className="col-span-2 flex flex-col gap-1">
+                    <span className="text-xs text-gray-500">Name <span className="text-gray-400 font-normal">(optional)</span></span>
+                    <input
+                      type="text"
+                      placeholder="e.g. Church key, Acoustic, Capo 2"
+                      value={newArr.name}
+                      onChange={e => setNewArr(prev => ({ ...prev, name: e.target.value }))}
+                      className="border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+                    />
+                  </label>
                   <label className="flex flex-col gap-1">
                     <span className="text-xs text-gray-500">Key</span>
                     <select

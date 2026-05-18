@@ -74,6 +74,12 @@ export default function App() {
       const withoutBoth = prev.filter(s => s.id !== selectedSong.id && s.id !== suggestion.id)
       return [...withoutBoth, selectedSong, suggestion]
     })
+    setSelectedSong(null)
+    setSuggestions([])
+  }
+
+  const handleSongUpdate = (updated: Song) => {
+    setSongs(prev => prev.map(s => s.id === updated.id ? updated : s))
   }
 
   return (
@@ -152,7 +158,7 @@ export default function App() {
         </>
       ) : (
         <div className="flex-1 overflow-hidden">
-          <AdminPanel />
+          <AdminPanel onSongUpdate={handleSongUpdate} />
         </div>
       )}
     </div>
