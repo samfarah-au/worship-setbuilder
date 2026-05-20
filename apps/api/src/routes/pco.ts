@@ -2,9 +2,9 @@ import { Router, Request, Response } from 'express';
 import { getSupabase } from '../services/supabase';
 import { addSong } from '../services/songs';
 import {
-  getPcoConfig, savePcoConfig, clearPcoConfig, clearPcoLabel,
-  getPcoSongs, getPcoArrangements, testPcoConnection,
-  PCO_LABEL, PcoConfig,
+  getPcoConfig, savePcoConfig, clearPcoConfig, clearPcoConnections,
+  getPcoSongs, getPcoArrangements, testPcoConnection, getPcoServiceTypes,
+  getServiceTypeSchedule, KEY_TO_NUMBER, PcoConfig,
 } from '../services/pco';
 
 const router = Router();
@@ -19,42 +19,118 @@ router.get('/config', async (_req: Request, res: Response) => {
   const appId = stored.data?.config?.appId ?? process.env.PCO_APP_ID ?? '';
   // Return actual secret only when pre-filling from env (not yet saved)
   const secret = isStoredInDb ? '••••••••' : (process.env.PCO_SECRET ?? '');
+  const serviceTypeId: string | null = stored.data?.config?.serviceTypeId ?? null;
 
   const { count } = await getSupabase()
     .from('songs').select('id', { count: 'exact', head: true })
-    .overlaps('source_labels', [PCO_LABEL]);
+    .not('pco_song_id', 'is', null);
 
-  return res.json({ configured: isStoredInDb, appId, secret, pcoSongCount: count ?? 0 });
+  return res.json({ configured: isStoredInDb, appId, secret, pcoSongCount: count ?? 0, serviceTypeId });
 });
 
 // PUT /pco/config
 router.put('/config', async (req: Request, res: Response) => {
-  const { app_id, secret, reset } = req.body;
+  const { app_id, secret, reset, service_type_id } = req.body;
 
   if (reset) {
-    const count = await clearPcoLabel();
+    const count = await clearPcoConnections();
     await clearPcoConfig();
     return res.json({ reset: true, clearedCount: count });
   }
 
-  if (!app_id || !secret || secret === '••••••••') {
-    return res.status(400).json({ error: 'app_id and secret are required' });
+  // Service-type-only update — no need to re-test credentials
+  if (service_type_id !== undefined && !app_id) {
+    const existing = await getPcoConfig();
+    if (!existing) return res.status(400).json({ error: 'PCO not configured' });
+    const updated: PcoConfig = {
+      ...existing,
+      serviceTypeId: service_type_id || undefined,
+    };
+    await savePcoConfig(updated);
+    return res.json({ saved: true });
   }
 
-  const newConfig: PcoConfig = { appId: app_id, secret };
+  if (!app_id) {
+    return res.status(400).json({ error: 'app_id is required' });
+  }
+
+  // Allow blank secret if credentials are already stored — reuse the stored secret
+  const existing = await getPcoConfig();
+  const resolvedSecret = (secret && secret !== '••••••••') ? secret : existing?.secret;
+  if (!resolvedSecret) {
+    return res.status(400).json({ error: 'secret is required (no stored credentials found)' });
+  }
+
+  const newConfig: PcoConfig = {
+    appId: app_id,
+    secret: resolvedSecret,
+    serviceTypeId: existing?.serviceTypeId,
+  };
 
   const ok = await testPcoConnection(newConfig);
   if (!ok) return res.status(400).json({ error: 'Could not connect to PCO with these credentials' });
 
   // If changing to a different account, remove old PCO labels first
-  const existing = await getPcoConfig();
   let clearedCount = 0;
   if (existing && existing.appId !== app_id) {
-    clearedCount = await clearPcoLabel();
+    clearedCount = await clearPcoConnections();
+    newConfig.serviceTypeId = undefined;
   }
 
   await savePcoConfig(newConfig);
   return res.json({ saved: true, clearedCount });
+});
+
+// GET /pco/service-types
+router.get('/service-types', async (_req: Request, res: Response) => {
+  const config = await getPcoConfig();
+  if (!config) return res.status(400).json({ error: 'PCO not configured' });
+  try {
+    const serviceTypes = await getPcoServiceTypes(config);
+    return res.json(serviceTypes);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /pco/sync-schedule — streams SSE progress while updating last_scheduled_at per service type
+router.post('/sync-schedule', async (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const send = (data: object) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+
+  try {
+    const config = await getPcoConfig();
+    if (!config) { send({ error: 'PCO not configured' }); return res.end(); }
+    const serviceTypeId: string | undefined = req.body?.service_type_id ?? config.serviceTypeId;
+    if (!serviceTypeId) { send({ error: 'No service type configured' }); return res.end(); }
+
+    send({ message: 'Fetching plan history…' });
+
+    const schedule = await getServiceTypeSchedule(config, serviceTypeId, (processed) => {
+      send({ message: `Scanned ${processed} plans…` });
+    });
+
+    send({ message: 'Updating songs…' });
+
+    const { data: songs } = await getSupabase()
+      .from('songs').select('id, pco_song_id').not('pco_song_id', 'is', null);
+
+    let updated = 0;
+    for (const song of (songs ?? [])) {
+      const lastScheduledAt = schedule.get(song.pco_song_id) ?? null;
+      await getSupabase().from('songs').update({ last_scheduled_at: lastScheduledAt }).eq('id', song.id);
+      updated++;
+    }
+
+    send({ done: true, updated, message: `Updated ${updated} songs` });
+  } catch (err: any) {
+    send({ error: err.message });
+  }
+  res.end();
 });
 
 // GET /pco/preview — classify PCO library against existing songs
@@ -65,7 +141,7 @@ router.get('/preview', async (_req: Request, res: Response) => {
   try {
     const [pcoSongs, { data: existing }] = await Promise.all([
       getPcoSongs(config),
-      getSupabase().from('songs').select('id, title, artist, ccli_number, source_labels'),
+      getSupabase().from('songs').select('id, title, artist, ccli_number, pco_song_id'),
     ]);
 
     const results = pcoSongs.map(ps => {
@@ -78,7 +154,7 @@ router.get('/preview', async (_req: Request, res: Response) => {
       const match = ccliMatch || titleMatch;
 
       let status: 'imported' | 'match' | 'new';
-      if (match?.source_labels?.includes(PCO_LABEL)) status = 'imported';
+      if (match?.pco_song_id) status = 'imported';
       else if (match) status = 'match';
       else status = 'new';
 
@@ -87,6 +163,7 @@ router.get('/preview', async (_req: Request, res: Response) => {
         title: ps.title,
         author: ps.author,
         ccliNumber: ps.ccliNumber,
+        hidden: ps.hidden,
         status,
         existingSongId: match?.id ?? null,
         existingTitle: match?.title ?? null,
@@ -94,11 +171,35 @@ router.get('/preview', async (_req: Request, res: Response) => {
       };
     });
 
+    results.sort((a, b) => a.title.localeCompare(b.title));
     return res.json(results);
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
+
+function inferSourceLabel(candidates: string[], knownLabels: string[]): string | null {
+  let best: string | null = null;
+  for (const text of candidates) {
+    if (!text) continue;
+    const lower = text.toLowerCase();
+    for (const label of knownLabels) {
+      if (label && lower.includes(label.toLowerCase())) {
+        if (!best || label.length > best.length) best = label;
+      }
+    }
+  }
+  return best;
+}
+
+function bpmToEnergy(bpm: number, timeSignature = '4/4'): number {
+  const feltBpm = (timeSignature === '6/8' || timeSignature === '12/8') ? bpm / 1.5 : bpm;
+  if (feltBpm < 65)  return 1;
+  if (feltBpm < 86)  return 2;
+  if (feltBpm < 111) return 3;
+  if (feltBpm < 131) return 4;
+  return 5;
+}
 
 // POST /pco/import
 router.post('/import', async (req: Request, res: Response) => {
@@ -107,12 +208,20 @@ router.post('/import', async (req: Request, res: Response) => {
   if (!config) return res.status(400).json({ error: 'PCO not configured' });
 
   try {
-    const [pcoSongs, { data: existing }] = await Promise.all([
+    const [pcoSongs, { data: existing }, { data: labelSettings }, serviceTypeSchedule] = await Promise.all([
       getPcoSongs(config),
       getSupabase()
         .from('songs')
-        .select(`id, title, artist, ccli_number, source_labels, arrangements(${ARRANGEMENT_SELECT})`),
+        .select(`id, title, artist, ccli_number, pco_song_id, source_labels, arrangements(${ARRANGEMENT_SELECT})`),
+      getSupabase().from('app_settings').select('values').eq('key', 'custom_source_labels').maybeSingle(),
+      config.serviceTypeId ? getServiceTypeSchedule(config, config.serviceTypeId) : Promise.resolve(null),
     ]);
+
+    // Build the known labels list: settings-defined first (user intent), then in-use labels from songs
+    const knownLabels: string[] = [
+      ...(labelSettings?.values ?? []),
+      ...new Set((existing ?? []).flatMap((s: any) => s.source_labels ?? [])),
+    ];
 
     const toProcess = pco_song_ids?.length
       ? pcoSongs.filter(ps => pco_song_ids.includes(ps.pcoId))
@@ -131,51 +240,106 @@ router.post('/import', async (req: Request, res: Response) => {
           : null;
         const song = ccliMatch || titleMatch;
 
+        // Always fetch arrangements — needed for name, musical data, and alternate keys
+        const pcoArrs = await getPcoArrangements(ps.pcoId, config);
+        const pcoArr = pcoArrs[0];
+        const bpm = pcoArr?.bpm ?? 72;
+        const inferredLabel = inferSourceLabel([ps.author, pcoArr?.name ?? ''], knownLabels);
+
         if (song) {
-          const alreadyImported = song.source_labels?.includes(PCO_LABEL);
-          if (alreadyImported && !overwrite_metadata) { skipped++; continue; }
+          const alreadyImported = !!song.pco_song_id;
 
-          const newLabels = alreadyImported
-            ? song.source_labels
-            : [...(song.source_labels ?? []), PCO_LABEL];
+          // Always refresh scheduling data; add inferred source label if not already present
+          const lastScheduledAt = serviceTypeSchedule
+            ? (serviceTypeSchedule.get(ps.pcoId) ?? null)
+            : ps.lastScheduledAt;
+          const songUpdate: Record<string, unknown> = {
+            pco_song_id: ps.pcoId,
+            last_scheduled_at: lastScheduledAt,
+          };
+          if (inferredLabel && !(song.source_labels ?? []).includes(inferredLabel)) {
+            songUpdate.source_labels = [...(song.source_labels ?? []), inferredLabel];
+          }
+          await getSupabase().from('songs').update(songUpdate).eq('id', song.id);
 
-          await getSupabase().from('songs').update({ source_labels: newLabels }).eq('id', song.id);
+          if (pcoArr) {
+            const existingArrs = song.arrangements as any[];
+            const primary = existingArrs?.find((a: any) => a.is_primary);
 
-          if (overwrite_metadata) {
-            const pcoArrs = await getPcoArrangements(ps.pcoId, config);
-            const pcoArr = pcoArrs[0];
-            if (pcoArr) {
-              const primary = (song.arrangements as any[])?.find((a: any) => a.is_primary);
-              if (primary) {
-                const fields: Record<string, unknown> = {};
-                if (pcoArr.bpm) fields.tempo_bpm = pcoArr.bpm;
+            // Always update arrangement name; only update musical data when overwriting
+            if (primary) {
+              const fields: Record<string, unknown> = {};
+              if (pcoArr.name) fields.name = pcoArr.name;
+              if (overwrite_metadata) {
+                if (pcoArr.bpm) { fields.tempo_bpm = pcoArr.bpm; fields.energy_level = bpmToEnergy(pcoArr.bpm, pcoArr.timeSignature ?? '4/4'); }
                 if (pcoArr.key) { fields.key_signature = pcoArr.key; fields.key_number = pcoArr.keyNumber; }
                 if (pcoArr.timeSignature) fields.time_signature = pcoArr.timeSignature;
-                if (Object.keys(fields).length) {
-                  await getSupabase().from('arrangements').update(fields).eq('id', primary.id);
-                }
+              }
+              if (Object.keys(fields).length) {
+                await getSupabase().from('arrangements').update(fields).eq('id', primary.id);
               }
             }
+
+            // Add alternate arrangements for any assigned keys not already present
+            const primaryKey = (overwrite_metadata && pcoArr.key) ? pcoArr.key : primary?.key_signature;
+            const existingAltKeys = new Set(
+              existingArrs.filter((a: any) => !a.is_primary).map((a: any) => a.key_signature)
+            );
+            for (const altKey of pcoArr.assignedKeys) {
+              if (altKey === primaryKey || existingAltKeys.has(altKey) || KEY_TO_NUMBER[altKey] === undefined) continue;
+              await getSupabase().from('arrangements').insert({
+                song_id: song.id,
+                name: `Alternate Key: ${altKey}`,
+                key_signature: altKey,
+                key_number: KEY_TO_NUMBER[altKey],
+                tempo_bpm: bpm,
+                time_signature: pcoArr.timeSignature ?? '4/4',
+                energy_level: bpmToEnergy(bpm, pcoArr.timeSignature ?? '4/4'),
+                is_primary: false,
+              });
+            }
           }
+
+          if (alreadyImported && !overwrite_metadata) { skipped++; continue; }
           matched++;
         } else {
-          const pcoArrs = await getPcoArrangements(ps.pcoId, config);
-          const pcoArr = pcoArrs[0];
-
-          await addSong({
+          const songRow = await addSong({
             title: ps.title,
             artist: ps.author || 'Unknown',
-            sourceLabels: [PCO_LABEL],
+            sourceLabels: inferredLabel ? [inferredLabel] : [],
             ccliNumber: ps.ccliNumber ?? undefined,
             keySignature: pcoArr?.key ?? 'G',
             keyNumber: pcoArr?.keyNumber ?? 7,
-            tempoBpm: pcoArr?.bpm ?? 72,
+            tempoBpm: bpm,
             timeSignature: pcoArr?.timeSignature ?? '4/4',
+            energyLevel: bpmToEnergy(bpm, pcoArr?.timeSignature ?? '4/4'),
+            arrangementName: pcoArr?.name || undefined,
             themes: [],
             theologicalDepth: 2,
             style: 'modern',
             isHymn: false,
+            pcoSongId: ps.pcoId,
+            lastScheduledAt: (serviceTypeSchedule
+              ? (serviceTypeSchedule.get(ps.pcoId) ?? null)
+              : ps.lastScheduledAt) ?? undefined,
           });
+
+          // Add alternate arrangements for each assigned key
+          if (pcoArr) {
+            for (const altKey of pcoArr.assignedKeys) {
+              if (altKey === (pcoArr.key ?? 'G') || KEY_TO_NUMBER[altKey] === undefined) continue;
+              await getSupabase().from('arrangements').insert({
+                song_id: songRow.id,
+                name: `Alternate Key: ${altKey}`,
+                key_signature: altKey,
+                key_number: KEY_TO_NUMBER[altKey],
+                tempo_bpm: bpm,
+                time_signature: pcoArr.timeSignature ?? '4/4',
+                energy_level: bpmToEnergy(bpm, pcoArr.timeSignature ?? '4/4'),
+                is_primary: false,
+              });
+            }
+          }
           added++;
         }
       } catch (err: any) {

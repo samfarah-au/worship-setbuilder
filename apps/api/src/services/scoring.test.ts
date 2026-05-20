@@ -63,6 +63,6 @@ const results = scoreSongs(anchor, candidates);
 
 results.forEach(r => {
   console.log(`\n${r.song.title} — ${Math.round(r.total * 100)}%`);
-  console.log(`  Key: ${Math.round(r.breakdown.key * 100)}% | Tempo: ${Math.round(r.breakdown.tempo * 100)}% | Meter: ${Math.round(r.breakdown.meter * 100)}% | Energy: ${Math.round(r.breakdown.energy * 100)}% | Theme: ${Math.round(r.breakdown.theme * 100)}%`);
+  console.log(`  Key: ${Math.round(r.breakdown.key * 100)}% | Tempo: ${Math.round(r.breakdown.tempo * 100)}% | Meter: ${Math.round(r.breakdown.meter * 100)}% | Theme: ${Math.round(r.breakdown.theme * 100)}%`);
   r.reasons.forEach(reason => console.log(`  → ${reason}`));
 });

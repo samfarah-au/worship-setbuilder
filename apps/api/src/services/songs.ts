@@ -21,6 +21,9 @@ export interface NewSong {
   style?: string;
   isHymn?: boolean;
   lyricSnippet?: string;
+  pcoSongId?: string;
+  arrangementName?: string;
+  lastScheduledAt?: string;
 }
 
 export async function addSong(song: NewSong) {
@@ -35,6 +38,8 @@ export async function addSong(song: NewSong) {
       released_at:      song.releasedAt?.toISOString().split('T')[0],
       ccli_number:      song.ccliNumber,
       spotify_track_id: song.spotifyTrackId ?? null,
+      pco_song_id:      song.pcoSongId ?? null,
+      last_scheduled_at: song.lastScheduledAt ?? null,
     })
     .select()
     .single();
@@ -47,6 +52,7 @@ export async function addSong(song: NewSong) {
       .from('arrangements')
       .insert({
         song_id:        songRow.id,
+        name:           song.arrangementName ?? null,
         key_signature:  song.keySignature,
         key_number:     song.keyNumber,
         tempo_bpm:      song.tempoBpm,

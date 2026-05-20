@@ -27,10 +27,18 @@ export interface Song {
   released_year: number | null
   ccli_number: string | null
   spotify_track_id: string | null
+  pco_song_id: string | null
+  last_scheduled_at: string | null
+  is_retired: boolean
   created_at: string
   updated_at: string
   arrangements: Arrangement[]
   song_metadata: SongMetadata | null
+}
+
+export interface SetItem {
+  song: Song
+  arrangement: Arrangement
 }
 
 export interface SuggestionResult {
@@ -44,6 +52,7 @@ export interface SuggestionResult {
     timeSignature: string
     energyLevel: number
     themes: string[]
+    arrangementId?: string
   }
   total: number
   breakdown: {
@@ -70,6 +79,7 @@ export interface PcoPreviewItem {
   title: string
   author: string
   ccliNumber: string | null
+  hidden: boolean
   status: 'imported' | 'match' | 'new'
   existingSongId: string | null
   existingTitle: string | null
@@ -88,3 +98,12 @@ export interface SuggestionsResponse {
   suggestions: SuggestionResult[]
 }
 
+export interface ClientFilters {
+  keys: string[]
+  bpmMin: number | ''
+  bpmMax: number | ''
+  energy: number[]
+  theologicalDepth: number[]
+  themes: string[]
+  pcoNotUsedMonths: number | ''
+}

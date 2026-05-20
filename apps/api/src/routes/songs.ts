@@ -79,20 +79,31 @@ router.post('/', async (req: Request, res: Response) => {
 
 // GET /songs — list all songs with optional filters
 router.get('/', async (req: Request, res: Response) => {
-  const { source_labels, since, until, within_years, style } = req.query;
+  const { source_labels, since, until, within_years, style, pco_only, exclude_unlabeled, include_retired } = req.query;
 
   let query = getSupabase()
     .from('songs')
     .select(`*, arrangements(${ARRANGEMENT_SELECT}), song_metadata(themes, theological_depth, style, is_hymn)`);
 
+  if (include_retired !== 'true') query = query.eq('is_retired', false);
+
   if (source_labels) {
     const labels = (source_labels as string).split(',');
-    query = query.overlaps('source_labels', labels);
+    if (exclude_unlabeled === 'true') {
+      query = query.overlaps('source_labels', labels);
+    } else {
+      // Include matching songs OR songs with no label at all
+      const quotedLabels = labels.map(l => `"${l}"`).join(',');
+      query = query.or(`source_labels.ov.{${quotedLabels}},source_labels.eq.{}`);
+    }
+  } else if (exclude_unlabeled === 'true') {
+    query = query.not('source_labels', 'eq', '{}');
   }
   if (since)        query = query.gte('released_at', since as string);
   if (until)        query = query.lte('released_at', until as string);
   if (within_years) query = query.gte('released_year', new Date().getFullYear() - parseInt(within_years as string));
   if (style)        query = query.eq('song_metadata.style', style as string);
+  if (pco_only === 'true') query = query.not('pco_song_id', 'is', null);
 
   const { data, error } = await query.order('title');
   if (error) return res.status(500).json({ error: error.message });
@@ -108,11 +119,52 @@ router.get('/', async (req: Request, res: Response) => {
   return res.json(sorted);
 });
 
+// POST /songs/bulk-label — add a source label to multiple songs
+router.post('/bulk-label', async (req: Request, res: Response) => {
+  const { ids, label } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'ids array is required' });
+  }
+  const lbl = (label as string)?.trim();
+  if (!lbl) return res.status(400).json({ error: 'label is required' });
+
+  const { data: songs, error } = await getSupabase()
+    .from('songs').select('id, source_labels').in('id', ids);
+  if (error) return res.status(500).json({ error: error.message });
+
+  const toUpdate = (songs ?? []).filter((s: any) => !s.source_labels.includes(lbl));
+  for (const song of toUpdate) {
+    await getSupabase().from('songs')
+      .update({ source_labels: [...song.source_labels, lbl] }).eq('id', song.id);
+  }
+  return res.json({ updated: toUpdate.length, total: ids.length });
+});
+
+// PATCH /songs/labels/rename — rename a source label across all songs
+router.patch('/labels/rename', async (req: Request, res: Response) => {
+  const { from, to } = req.body;
+  const f = from?.trim(), t = to?.trim();
+  if (!f || !t) return res.status(400).json({ error: 'from and to are required' });
+  if (f === t)  return res.status(400).json({ error: 'Labels are the same' });
+
+  const { data: toUpdate, error } = await getSupabase()
+    .from('songs').select('id, source_labels').contains('source_labels', [f]);
+  if (error) return res.status(500).json({ error: error.message });
+  if (!toUpdate?.length) return res.json({ updated: 0 });
+
+  for (const song of toUpdate) {
+    await getSupabase().from('songs')
+      .update({ source_labels: song.source_labels.map((l: string) => l === f ? t : l) })
+      .eq('id', song.id);
+  }
+  return res.json({ updated: toUpdate.length });
+});
+
 // PATCH /songs/:id — update song-level fields, primary arrangement, and metadata
 router.patch('/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   const {
-    source_labels,
+    title, artist, source_labels, is_retired, spotify_track_id,
     name, key_signature, key_number, tempo_bpm, time_signature, energy_level,
     themes, theological_depth, style, is_hymn,
   } = req.body;
@@ -120,8 +172,14 @@ router.patch('/:id', async (req: Request, res: Response) => {
   const supabase = getSupabase();
 
   // Update songs table
-  if (source_labels !== undefined) {
-    const { error } = await supabase.from('songs').update({ source_labels }).eq('id', id);
+  const songFields: Record<string, unknown> = {};
+  if (title             !== undefined) songFields.title             = title;
+  if (artist            !== undefined) songFields.artist            = artist;
+  if (source_labels     !== undefined) songFields.source_labels     = source_labels;
+  if (is_retired        !== undefined) songFields.is_retired        = is_retired;
+  if (spotify_track_id  !== undefined) songFields.spotify_track_id  = spotify_track_id;
+  if (Object.keys(songFields).length > 0) {
+    const { error } = await supabase.from('songs').update(songFields).eq('id', id);
     if (error) return res.status(500).json({ error: error.message });
   }
 
@@ -205,6 +263,17 @@ router.patch('/arrangements/:arrangementId', async (req: Request, res: Response)
   return res.json(data);
 });
 
+// DELETE /songs — bulk delete songs by id array
+router.delete('/', async (req: Request, res: Response) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'ids array is required' });
+  }
+  const { error } = await getSupabase().from('songs').delete().in('id', ids);
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json({ deleted: ids.length });
+});
+
 // DELETE /arrangements/:arrangementId — remove an alternate arrangement
 router.delete('/arrangements/:arrangementId', async (req: Request, res: Response) => {
   const { arrangementId } = req.params;
@@ -218,44 +287,67 @@ router.delete('/arrangements/:arrangementId', async (req: Request, res: Response
   return res.status(204).send();
 });
 
+// DELETE /songs/:id — delete a single song (arrangements and metadata cascade)
+router.delete('/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { error } = await getSupabase().from('songs').delete().eq('id', id);
+  if (error) return res.status(500).json({ error: error.message });
+  return res.status(204).send();
+});
+
 // GET /songs/:id/suggestions — score all arrangements per candidate, return best
 router.get('/:id/suggestions', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { source_labels, since, within_years, limit = '10' } = req.query;
+  const { source_labels, since, within_years, pco_only,
+    key_number, key_signature, tempo_bpm, time_signature, energy_level } = req.query;
+
+
 
   const { data: anchor, error: anchorError } = await getSupabase()
     .from('songs')
-    .select(`*, arrangements!inner(key_signature, key_number, tempo_bpm, time_signature, energy_level, is_primary), song_metadata(themes)`)
-    .eq('id', id).eq('arrangements.is_primary', true).single();
+    .select(`*, arrangements(id, key_signature, key_number, tempo_bpm, time_signature, energy_level, is_primary), song_metadata(themes)`)
+    .eq('id', id).single();
 
   if (anchorError || !anchor) return res.status(404).json({ error: 'Song not found' });
+
+  const primaryArr = anchor.arrangements.find((a: any) => a.is_primary) ?? anchor.arrangements[0];
 
   let query = getSupabase()
     .from('songs')
     .select(`*, arrangements(${ARRANGEMENT_SELECT}), song_metadata(themes)`)
-    .neq('id', id);
+    .neq('id', id)
+    .eq('is_retired', false);
 
-  if (source_labels) query = query.overlaps('source_labels', (source_labels as string).split(','));
+  if (source_labels) {
+    const labels = (source_labels as string).split(',');
+    const quotedLabels = labels.map(l => `"${l}"`).join(',');
+    query = query.or(`source_labels.ov.{${quotedLabels}},source_labels.eq.{}`);
+  }
   if (since)         query = query.gte('released_at', since as string);
   if (within_years)  query = query.gte('released_year', new Date().getFullYear() - parseInt(within_years as string));
+  if (pco_only === 'true') query = query.not('pco_song_id', 'is', null);
 
   const { data: candidates, error: candidatesError } = await query;
   if (candidatesError) return res.status(500).json({ error: candidatesError.message });
 
+  // Allow caller to override the anchor arrangement (e.g. when anchoring on an alternate)
   const anchorForScoring: SongForScoring = {
     id: anchor.id, title: anchor.title, artist: anchor.artist,
-    keyNumber: anchor.arrangements[0].key_number, keySignature: anchor.arrangements[0].key_signature,
-    tempoBpm: anchor.arrangements[0].tempo_bpm, timeSignature: anchor.arrangements[0].time_signature,
-    energyLevel: anchor.arrangements[0].energy_level, themes: anchor.song_metadata?.themes ?? [],
+    keyNumber:     key_number     ? parseInt(key_number as string)     : primaryArr.key_number,
+    keySignature:  key_signature  ? (key_signature as string)          : primaryArr.key_signature,
+    tempoBpm:      tempo_bpm      ? parseFloat(tempo_bpm as string)    : primaryArr.tempo_bpm,
+    timeSignature: time_signature ? (time_signature as string)         : primaryArr.time_signature,
+    energyLevel:   energy_level   ? parseInt(energy_level as string)   : primaryArr.energy_level,
+    themes: (Array.isArray(anchor.song_metadata) ? anchor.song_metadata[0] : anchor.song_metadata)?.themes ?? [],
   };
 
-  type CandidateWithMeta = { scoringObj: SongForScoring; isPrimary: boolean; primaryKeySignature: string };
+  type CandidateWithMeta = { scoringObj: SongForScoring; isPrimary: boolean; primaryKeySignature: string; isPco: boolean };
 
   const candidatesWithMeta: CandidateWithMeta[] = (candidates ?? [])
     .map((song: any) => {
       const arrangements: any[] = song.arrangements ?? [];
       if (!arrangements.length) return null;
-      const themes: string[] = song.song_metadata?.themes ?? [];
+      const themes: string[] = (Array.isArray(song.song_metadata) ? song.song_metadata[0] : song.song_metadata)?.themes ?? [];
       const primaryArr = arrangements.find((a: any) => a.is_primary) ?? arrangements[0];
       let bestArr = arrangements[0], bestScore = -1;
       for (const arr of arrangements) {
@@ -268,9 +360,10 @@ router.get('/:id/suggestions', async (req: Request, res: Response) => {
         if (result && result.total > bestScore) { bestScore = result.total; bestArr = arr; }
       }
       return {
-        scoringObj: { id: song.id, title: song.title, artist: song.artist, keyNumber: bestArr.key_number, keySignature: bestArr.key_signature, tempoBpm: bestArr.tempo_bpm, timeSignature: bestArr.time_signature, energyLevel: bestArr.energy_level, themes } as SongForScoring,
+        scoringObj: { id: song.id, title: song.title, artist: song.artist, keyNumber: bestArr.key_number, keySignature: bestArr.key_signature, tempoBpm: bestArr.tempo_bpm, timeSignature: bestArr.time_signature, energyLevel: bestArr.energy_level, themes, arrangementId: bestArr.id } as SongForScoring,
         isPrimary: bestArr.is_primary,
         primaryKeySignature: primaryArr.key_signature,
+        isPco: !!song.pco_song_id,
       };
     })
     .filter((c): c is CandidateWithMeta => c !== null);
@@ -278,13 +371,17 @@ router.get('/:id/suggestions', async (req: Request, res: Response) => {
   const results = scoreSongs(anchorForScoring, candidatesWithMeta.map(c => c.scoringObj));
   const enriched = results.map(result => {
     const meta = candidatesWithMeta.find(c => c.scoringObj.id === result.song.id);
-    if (meta && !meta.isPrimary) {
-      return { ...result, reasons: [...result.reasons, `Alternate key shown (${result.song.keySignature}) — primary is ${meta.primaryKeySignature}`] };
+    let r = result;
+    if (meta?.isPco) {
+      r = { ...r, reasons: [...r.reasons, 'In your PCO library'] };
     }
-    return result;
+    if (meta && !meta.isPrimary) {
+      r = { ...r, reasons: [...r.reasons, `Alternate key shown (${r.song.keySignature}) — primary is ${meta.primaryKeySignature}`] };
+    }
+    return r;
   });
 
-  return res.json({ anchor: anchorForScoring, suggestions: enriched.slice(0, parseInt(limit as string)) });
+  return res.json({ anchor: anchorForScoring, suggestions: enriched });
 });
 
 export default router;
