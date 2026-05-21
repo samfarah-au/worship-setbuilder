@@ -3,8 +3,12 @@
   "installCommand": "pnpm install",
   "buildCommand": "pnpm --filter ./apps/web build",
   "outputDirectory": "apps/web/dist",
-  "rewrites": [
-    { "source": "/api/:path*", "destination": "/api/index" },
-    { "source": "/(.*)", "destination": "/index.html" }
+  "builds": [
+    { "src": "apps/api/src/handler.ts", "use": "@vercel/node" }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/apps/api/src/handler" },
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
