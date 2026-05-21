@@ -1,6 +1,3 @@
-import dotenv from 'dotenv';
-dotenv.config(); // no-op in Vercel production; loads root .env locally if running directly
-
 import app from '../apps/api/src/app';
 
 export default function handler(req: any, res: any) {
