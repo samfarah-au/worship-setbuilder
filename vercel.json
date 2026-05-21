@@ -7,7 +7,7 @@
     { "src": "apps/api/src/handler.ts", "use": "@vercel/node" }
   ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "/apps/api/src/handler" },
+    { "src": "/api/(.*)", "dest": "/apps/api/src/handler.ts" },
     { "handle": "filesystem" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
