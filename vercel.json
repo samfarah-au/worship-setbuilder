@@ -1,14 +1,10 @@
 {
   "version": 2,
   "installCommand": "pnpm install",
-  "buildCommand": "pnpm --filter ./apps/web build",
+  "buildCommand": "pnpm --filter ./apps/api build && pnpm --filter ./apps/web build",
   "outputDirectory": "apps/web/dist",
-  "builds": [
-    { "src": "apps/api/src/handler.ts", "use": "@vercel/node" }
-  ],
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/apps/api/src/handler.ts" },
-    { "handle": "filesystem" },
-    { "src": "/(.*)", "dest": "/index.html" }
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api/index" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
