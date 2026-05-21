@@ -93,28 +93,15 @@ router.get('/service-types', async (_req: Request, res: Response) => {
   }
 });
 
-// POST /pco/sync-schedule — streams SSE progress while updating last_scheduled_at per service type
+// POST /pco/sync-schedule — scans up to 50 recent plans and updates last_scheduled_at
 router.post('/sync-schedule', async (req: Request, res: Response) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-
-  const send = (data: object) => res.write(`data: ${JSON.stringify(data)}\n\n`);
-
   try {
     const config = await getPcoConfig();
-    if (!config) { send({ error: 'PCO not configured' }); return res.end(); }
+    if (!config) return res.status(400).json({ error: 'PCO not configured' });
     const serviceTypeId: string | undefined = req.body?.service_type_id ?? config.serviceTypeId;
-    if (!serviceTypeId) { send({ error: 'No service type configured' }); return res.end(); }
+    if (!serviceTypeId) return res.status(400).json({ error: 'No service type configured' });
 
-    send({ message: 'Fetching plan history…' });
-
-    const schedule = await getServiceTypeSchedule(config, serviceTypeId, (processed) => {
-      send({ message: `Scanned ${processed} plans…` });
-    });
-
-    send({ message: 'Updating songs…' });
+    const schedule = await getServiceTypeSchedule(config, serviceTypeId);
 
     const { data: songs } = await getSupabase()
       .from('songs').select('id, pco_song_id').not('pco_song_id', 'is', null);
@@ -126,11 +113,10 @@ router.post('/sync-schedule', async (req: Request, res: Response) => {
       updated++;
     }
 
-    send({ done: true, updated, message: `Updated ${updated} songs` });
+    return res.json({ updated, message: `Updated ${updated} songs` });
   } catch (err: any) {
-    send({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
-  res.end();
 });
 
 // GET /pco/preview — classify PCO library against existing songs

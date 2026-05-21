@@ -1113,42 +1113,21 @@ export default function AdminPanel({ onSongUpdate, onSongAdd, onSongsReload, onL
                 {pcoConfigData.serviceTypeId && (
                   <button
                     onClick={async () => {
-                      setPcoScheduleSyncing(true); setPcoScheduleSyncResult('Starting…')
+                      setPcoScheduleSyncing(true); setPcoScheduleSyncResult(null)
                       try {
-                        const response = await fetch('/api/pco/sync-schedule', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ service_type_id: pcoConfigData.serviceTypeId }),
+                        const { data } = await axios.post('/api/pco/sync-schedule', {
+                          service_type_id: pcoConfigData.serviceTypeId,
                         })
-                        const reader = response.body!.getReader()
-                        const decoder = new TextDecoder()
-                        let buffer = ''
-                        while (true) {
-                          const { done, value } = await reader.read()
-                          if (done) break
-                          buffer += decoder.decode(value, { stream: true })
-                          const lines = buffer.split('\n')
-                          buffer = lines.pop() ?? ''
-                          for (const line of lines) {
-                            if (!line.startsWith('data: ')) continue
-                            try {
-                              const event = JSON.parse(line.slice(6))
-                              if (event.error) { setPcoScheduleSyncResult(event.error); return }
-                              if (event.message) setPcoScheduleSyncResult(event.message)
-                              if (event.done) {
-                                const [freshSongs] = await Promise.all([
-                                  axios.get('/api/songs', { params: { include_retired: 'true' } }).then(r => r.data),
-                                  onSongsReload(),
-                                ])
-                                setSongs(freshSongs)
-                                setSelectedSong(prev => prev ? (freshSongs.find((s: Song) => s.id === prev.id) ?? prev) : null)
-                                setTimeout(() => setPcoScheduleSyncResult(null), 4000)
-                              }
-                            } catch { /* malformed event */ }
-                          }
-                        }
-                      } catch {
-                        setPcoScheduleSyncResult('Sync failed')
+                        const [freshSongs] = await Promise.all([
+                          axios.get('/api/songs', { params: { include_retired: 'true' } }).then(r => r.data),
+                          onSongsReload(),
+                        ])
+                        setSongs(freshSongs)
+                        setSelectedSong(prev => prev ? (freshSongs.find((s: Song) => s.id === prev.id) ?? prev) : null)
+                        setPcoScheduleSyncResult(data.message ?? `Updated ${data.updated} songs`)
+                        setTimeout(() => setPcoScheduleSyncResult(null), 4000)
+                      } catch (err: any) {
+                        setPcoScheduleSyncResult(err.response?.data?.error ?? 'Sync failed')
                       } finally {
                         setPcoScheduleSyncing(false)
                       }

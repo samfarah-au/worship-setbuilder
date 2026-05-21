@@ -158,7 +158,7 @@ export async function getServiceTypeSchedule(
   const schedule = new Map<string, string>();
   let offset = 0;
   const perPage = 100;
-  const maxPlans = 100;
+  const maxPlans = 50;
   let totalProcessed = 0;
 
   while (offset < maxPlans) {

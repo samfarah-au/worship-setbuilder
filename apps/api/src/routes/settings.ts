@@ -54,7 +54,7 @@ router.post('/time_signatures', async (req: Request, res: Response) => {
 
 // DELETE /settings/time_signatures/:value
 router.delete('/time_signatures/:value', async (req: Request, res: Response) => {
-  const value = decodeURIComponent(req.params.value);
+  const value = decodeURIComponent(req.params.value as string);
   if (BASE_TIME_SIGNATURES.includes(value)) {
     return res.status(400).json({ error: 'Cannot delete a base time signature' });
   }
@@ -86,7 +86,7 @@ router.post('/styles', async (req: Request, res: Response) => {
 
 // DELETE /settings/styles/:value
 router.delete('/styles/:value', async (req: Request, res: Response) => {
-  const value = decodeURIComponent(req.params.value);
+  const value = decodeURIComponent(req.params.value as string);
   if (BASE_STYLES.includes(value)) {
     return res.status(400).json({ error: 'Cannot delete a base style' });
   }
@@ -120,7 +120,7 @@ router.post('/source_labels', async (req: Request, res: Response) => {
 
 // DELETE /settings/source_labels/:value
 router.delete('/source_labels/:value', async (req: Request, res: Response) => {
-  const value = decodeURIComponent(req.params.value);
+  const value = decodeURIComponent(req.params.value as string);
   try {
     const existing = await getCustomValues('custom_source_labels');
     if (!existing.includes(value)) return res.status(404).json({ error: 'Label not found' });
@@ -178,7 +178,7 @@ router.post('/themes/bulk', async (req: Request, res: Response) => {
 
 // DELETE /settings/themes/:value
 router.delete('/themes/:value', async (req: Request, res: Response) => {
-  const value = decodeURIComponent(req.params.value);
+  const value = decodeURIComponent(req.params.value as string);
   try {
     const existing = await getCustomValues('custom_themes');
     if (!existing.includes(value)) return res.status(404).json({ error: 'Theme not found' });

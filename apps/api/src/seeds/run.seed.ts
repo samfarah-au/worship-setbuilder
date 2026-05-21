@@ -48,7 +48,7 @@ async function run() {
       await addSong({
         title:            seed.title,
         artist:           seed.artist,
-        sourceLabel:      seed.sourceLabel,
+        sourceLabels:     seed.sourceLabels,
         spotifyTrackId:   match.spotifyTrackId,
         album:            match.album,
         releasedAt:       match.releasedAt,
@@ -79,19 +79,19 @@ async function run() {
   // Manual adds for songs not found on Spotify
   const manualSongs = [
     {
-      title: 'Christ Be All Around Me', artist: 'Passion', sourceLabel: 'Passion',
+      title: 'Christ Be All Around Me', artist: 'Passion', sourceLabels: ['Passion'],
       spotifyTrackId: 'manual-christ-be-all', keySignature: 'C', keyNumber: 0,
       tempoBpm: 72, timeSignature: '4/4', energyLevel: 2,
       themes: ['Jesus', 'surrender', 'worship', 'presence'], theologicalDepth: 2, style: 'modern' as const, isHymn: false,
     },
     {
-      title: 'Never Stops', artist: 'Planetshakers', sourceLabel: 'Planet Shakers',
+      title: 'Never Stops', artist: 'Planetshakers', sourceLabels: ['Planet Shakers'],
       spotifyTrackId: 'manual-never-stops', keySignature: 'A', keyNumber: 9,
       tempoBpm: 140, timeSignature: '4/4', energyLevel: 5,
       themes: ['praise', 'worship', 'love', 'adoration'], theologicalDepth: 1, style: 'modern' as const, isHymn: false,
     },
     {
-      title: 'Fill Me Up', artist: 'Planetshakers', sourceLabel: 'Planet Shakers',
+      title: 'Fill Me Up', artist: 'Planetshakers', sourceLabels: ['Planet Shakers'],
       spotifyTrackId: 'manual-fill-me-up', keySignature: 'G', keyNumber: 7,
       tempoBpm: 136, timeSignature: '4/4', energyLevel: 4,
       themes: ['Holy Spirit', 'revival', 'worship', 'surrender'], theologicalDepth: 1, style: 'modern' as const, isHymn: false,
