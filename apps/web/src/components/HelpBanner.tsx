@@ -27,7 +27,7 @@ export default function HelpBanner({ id, text }: Props) {
   }
 
   return (
-    <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 text-xs text-gray-500 leading-relaxed flex gap-2 items-start">
+    <div className="px-4 py-2.5 bg-yellow-50 border-b border-yellow-100 text-xs text-gray-500 leading-relaxed flex gap-2 items-start">
       <span className="flex-1">{text}</span>
       <button
         onClick={toggle}
