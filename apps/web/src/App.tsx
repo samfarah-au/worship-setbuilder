@@ -328,6 +328,9 @@ export default function App() {
               onRemove={removeFromSet}
               onReorder={setSetList}
               onUseAsAnchor={(song, arrangement) => { setSelectedSong(song); setSelectedArrangement(arrangement) }}
+              onChangeArrangement={(songId, arrangement) =>
+                setSetList(prev => prev.map(item => item.song.id === songId ? { ...item, arrangement } : item))
+              }
               onClearAll={() => setSetList([])}
               onSongUpdate={updated => {
                 handleSongUpdate(updated)

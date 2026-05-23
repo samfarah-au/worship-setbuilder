@@ -39,6 +39,7 @@ interface Props {
   onRemove: (songId: string) => void
   onReorder: (items: SetItem[]) => void
   onUseAsAnchor: (song: Song, arrangement: Arrangement) => void
+  onChangeArrangement: (songId: string, arrangement: Arrangement) => void
   onClearAll: () => void
   onSongUpdate: (song: Song) => void
 }
@@ -193,13 +194,14 @@ function DragHandle(props: React.HTMLAttributes<HTMLButtonElement>) {
 }
 
 function SortableSongItem({
-  item, index, notices, onRemove, onUseAsAnchor, previewOpen, onTogglePreview, onSongUpdate,
+  item, index, notices, onRemove, onUseAsAnchor, onChangeArrangement, previewOpen, onTogglePreview, onSongUpdate,
 }: {
   item: SetItem
   index: number
   notices: FlowNotice[]
   onRemove: (songId: string) => void
   onUseAsAnchor: (song: Song, arrangement: Arrangement) => void
+  onChangeArrangement: (arrangement: Arrangement) => void
   previewOpen: boolean
   onTogglePreview: () => void
   onSongUpdate: (song: Song) => void
@@ -235,12 +237,28 @@ function SortableSongItem({
           <span className="text-xs text-gray-400 w-4 text-center flex-shrink-0">{index + 1}</span>
           <div className="flex-1 min-w-0">
             <div className="font-medium text-gray-800 truncate text-xs">{item.song.title}</div>
-            <div className="text-xs text-gray-500 flex items-center gap-1">
-              <span>{arr.key_signature} · {arr.tempo_bpm} BPM</span>
-              {!arr.is_primary && (
-                <span className="text-amber-600 bg-amber-50 border border-amber-200 px-1 rounded">alt</span>
-              )}
-            </div>
+            {item.song.arrangements.length > 1 ? (
+              <div className="flex gap-1 mt-0.5 flex-wrap">
+                {item.song.arrangements.map(a => {
+                  const active = a.id === arr.id
+                  return (
+                    <button
+                      key={a.id}
+                      onClick={e => { e.stopPropagation(); if (!active) onChangeArrangement(a) }}
+                      className={`text-xs px-1.5 py-0.5 rounded border transition-colors ${
+                        active
+                          ? 'bg-blue-100 text-blue-700 border-blue-300 font-medium'
+                          : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400'
+                      }`}
+                    >
+                      {a.key_signature} · {a.tempo_bpm}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="text-xs text-gray-500">{arr.key_signature} · {arr.tempo_bpm} BPM</div>
+            )}
           </div>
           <button
             onClick={onTogglePreview}
@@ -267,7 +285,7 @@ function SortableSongItem({
   )
 }
 
-export default function SetBuilder({ setList, onRemove, onReorder, onUseAsAnchor, onClearAll, onSongUpdate }: Props) {
+export default function SetBuilder({ setList, onRemove, onReorder, onUseAsAnchor, onChangeArrangement, onClearAll, onSongUpdate }: Props) {
   const [previewSongId, setPreviewSongId] = useState<string | null>(null)
 
   const sensors = useSensors(
@@ -340,6 +358,7 @@ export default function SetBuilder({ setList, onRemove, onReorder, onUseAsAnchor
                 notices={index > 0 ? transitionNotices[index - 1] : []}
                 onRemove={onRemove}
                 onUseAsAnchor={onUseAsAnchor}
+                onChangeArrangement={arr => onChangeArrangement(item.song.id, arr)}
                 previewOpen={previewSongId === item.song.id}
                 onTogglePreview={() => setPreviewSongId(prev => prev === item.song.id ? null : item.song.id)}
                 onSongUpdate={onSongUpdate}
