@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import type { Song, Arrangement, SpotifyCandidate, PcoPreviewItem, PcoImportResult } from '../types'
 import SpotifyPreview from './SpotifyPreview'
+import HelpBanner from './HelpBanner'
 
 const KEY_SIGNATURES = [
   'A', 'Am', 'Bb', 'Bbm', 'B', 'Bm', 'C', 'Cm', 'C#', 'C#m', 'Db',
@@ -823,6 +824,25 @@ export default function AdminPanel({ onSongUpdate, onSongAdd, onSongsReload, onL
     }
   }
 
+  const adminHelpText = (() => {
+    if (view === 'pco') {
+      if (!pcoConfigData?.appId) return 'Enter your PCO API credentials on the left, then load your Planning Center library to preview and import songs.'
+      return 'PCO songs are matched against your library. New songs can be imported; matched songs update their last-used date. Select songs and click Import.'
+    }
+    if (view === 'add') {
+      if (!addForm) return 'Search by title and artist to find a Spotify match — BPM, key, and release year are pre-filled automatically.'
+      return `Review the pre-filled details for "${addForm.title}". Source labels, themes, and energy level affect how this song ranks in Library suggestions.`
+    }
+    if (view === 'settings') {
+      if (settingsCategory === 'source_labels') return 'Source labels tag songs by publisher or series. They power the Library filter and can be renamed — the rename applies to all songs automatically.'
+      if (settingsCategory === 'themes') return "Themes describe a song's lyrical focus. They appear on song cards and group compatible songs together in Library suggestions."
+      if (settingsCategory === 'time_signatures') return 'Custom time signatures appear alongside the standard ones (4/4, 3/4, etc.) when editing an arrangement.'
+      return 'Styles describe the musical genre or feel of a song — used in the suggestion engine and shown in the song editor.'
+    }
+    if (selectedSong) return `Editing key, tempo, energy, and themes refines how "${selectedSong.title}" pairs with others in Library. Changes take effect after saving.`
+    return 'Select a song to edit its arrangement data, themes, and metadata. These attributes drive how songs are ranked in Library suggestions.'
+  })()
+
   return (
     <div className="flex h-full overflow-hidden">
       {/* Left: song list (songs view) or nav (settings view) */}
@@ -1173,7 +1193,9 @@ export default function AdminPanel({ onSongUpdate, onSongAdd, onSongsReload, onL
       </div>
 
       {/* Right: edit panel */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <HelpBanner id="admin" text={adminHelpText} />
+        <div className="flex-1 overflow-y-auto">
         {view === 'pco' ? (
           !pcoPreview ? (
             <div className="flex items-center justify-center h-full text-sm text-gray-400">
@@ -2003,6 +2025,7 @@ export default function AdminPanel({ onSongUpdate, onSongAdd, onSongsReload, onL
             </div>
           </div>
         ) : null}
+        </div>
       </div>
     </div>
   )

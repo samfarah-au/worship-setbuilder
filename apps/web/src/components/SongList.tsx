@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Song, Arrangement, SuggestionResult } from '../types'
 import SpotifyPreview from './SpotifyPreview'
+import HelpBanner from './HelpBanner'
 
 // Renders an arrangement chip. When no anchor is active the chip is split:
 // left side sets the anchor, right "+" adds directly to the set.
@@ -104,6 +105,10 @@ export default function SongList({
   const [previewSongId, setPreviewSongId] = useState<string | null>(null)
   const suggestionMap = new Map(suggestions.map(s => [s.song.id, s]))
 
+  const helpText = selectedSong
+    ? `Songs are ranked by how well they pair with "${selectedSong.title}". Click an arrangement chip to add a pair, or use "add pair" to add the best-matched arrangement.`
+    : 'Use the sidebar to filter by source or release year. Click a song\'s arrangement chip to anchor it — the list reorders to show the best pairing suggestions.'
+
   // Filter by search
   const filtered = songs.filter(s =>
     s.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -129,6 +134,8 @@ export default function SongList({
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      <HelpBanner id="library" text={helpText} />
+
       {/* Search bar */}
       <div className="p-3 border-b border-gray-200 bg-white flex flex-col gap-2">
         <div className="relative">
