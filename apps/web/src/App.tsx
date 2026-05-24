@@ -5,6 +5,7 @@ import SongList from './components/SongList'
 import SetBuilder from './components/SetBuilder'
 import SourceFilter from './components/SourceFilter'
 import AdminPanel from './components/AdminPanel'
+import FeedbackModal from './components/FeedbackModal'
 
 type Tab = 'library' | 'admin'
 
@@ -44,6 +45,7 @@ export default function App() {
   const [search, setSearch] = useState('')
   const [showRetired, setShowRetired] = useState(false)
   const [adminOpenSongId, setAdminOpenSongId] = useState<string | null>(null)
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [clientFilters, setClientFilters] = useState<ClientFilters>({
     keys: [], bpmMin: '', bpmMax: '', energy: [], theologicalDepth: [], themes: [], pcoNotUsedMonths: '',
   })
@@ -347,6 +349,16 @@ export default function App() {
           <AdminPanel onSongUpdate={handleSongUpdate} onSongAdd={handleSongAdd} onSongsReload={handleSongsReload} onLabelRename={handleLabelRename} openSongId={adminOpenSongId} />
         </div>
       )}
+
+      {/* Feedback button */}
+      <button
+        onClick={() => setFeedbackOpen(true)}
+        className="fixed bottom-4 right-4 z-40 text-xs bg-white border border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-400 px-3 py-1.5 rounded-full shadow-sm transition-colors"
+      >
+        Feedback
+      </button>
+
+      {feedbackOpen && <FeedbackModal onClose={() => setFeedbackOpen(false)} />}
     </div>
   )
 }

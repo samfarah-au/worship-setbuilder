@@ -3,6 +3,7 @@ import cors from 'cors';
 import songsRouter from './routes/songs';
 import settingsRouter from './routes/settings';
 import pcoRouter from './routes/pco';
+import feedbackRouter from './routes/feedback';
 
 const app = express();
 
@@ -16,5 +17,6 @@ app.get('/health', (_req, res) => {
 app.use('/songs', songsRouter);
 app.use('/settings', settingsRouter);
 app.use('/pco', pcoRouter);
+app.use('/feedback', feedbackRouter);
 
 export default app;
