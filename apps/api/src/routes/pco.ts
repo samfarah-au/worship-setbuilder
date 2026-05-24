@@ -93,7 +93,8 @@ router.get('/service-types', async (_req: Request, res: Response) => {
   }
 });
 
-// POST /pco/sync-schedule — scans up to 50 recent plans and updates last_scheduled_at
+// POST /pco/sync-schedule — scans up to 50 recent plans, updates last_scheduled_at,
+// and adds any new alternate arrangements/keys found in PCO.
 router.post('/sync-schedule', async (req: Request, res: Response) => {
   try {
     const config = await getPcoConfig();
@@ -101,19 +102,54 @@ router.post('/sync-schedule', async (req: Request, res: Response) => {
     const serviceTypeId: string | undefined = req.body?.service_type_id ?? config.serviceTypeId;
     if (!serviceTypeId) return res.status(400).json({ error: 'No service type configured' });
 
-    const schedule = await getServiceTypeSchedule(config, serviceTypeId);
-
-    const { data: songs } = await getSupabase()
-      .from('songs').select('id, pco_song_id').not('pco_song_id', 'is', null);
+    const [schedule, { data: songs }] = await Promise.all([
+      getServiceTypeSchedule(config, serviceTypeId),
+      getSupabase()
+        .from('songs')
+        .select(`id, pco_song_id, arrangements(${ARRANGEMENT_SELECT})`)
+        .not('pco_song_id', 'is', null),
+    ]);
 
     let updated = 0;
+    let newArrangements = 0;
+
     for (const song of (songs ?? [])) {
       const lastScheduledAt = schedule.get(song.pco_song_id) ?? null;
       await getSupabase().from('songs').update({ last_scheduled_at: lastScheduledAt }).eq('id', song.id);
       updated++;
+
+      // Check PCO for new alternate keys not already in the DB
+      try {
+        const pcoArrs = await getPcoArrangements(song.pco_song_id, config);
+        const pcoArr = pcoArrs[0];
+        if (pcoArr?.assignedKeys?.length) {
+          const existingArrs = song.arrangements as any[];
+          const primary = existingArrs?.find((a: any) => a.is_primary);
+          const existingKeys = new Set(existingArrs.map((a: any) => a.key_signature));
+          const bpm = pcoArr.bpm ?? primary?.tempo_bpm ?? 72;
+          const timeSig = pcoArr.timeSignature ?? primary?.time_signature ?? '4/4';
+
+          for (const altKey of pcoArr.assignedKeys) {
+            if (existingKeys.has(altKey) || KEY_TO_NUMBER[altKey] === undefined) continue;
+            await getSupabase().from('arrangements').insert({
+              song_id: song.id,
+              name: `Alternate Key: ${altKey}`,
+              key_signature: altKey,
+              key_number: KEY_TO_NUMBER[altKey],
+              tempo_bpm: bpm,
+              time_signature: timeSig,
+              energy_level: bpmToEnergy(bpm, timeSig),
+              is_primary: false,
+            });
+            newArrangements++;
+          }
+        }
+      } catch { /* skip arrangement update for this song if PCO call fails */ }
     }
 
-    return res.json({ updated, message: `Updated ${updated} songs` });
+    const parts = [`Updated ${updated} songs`];
+    if (newArrangements > 0) parts.push(`added ${newArrangements} new arrangement${newArrangements !== 1 ? 's' : ''}`);
+    return res.json({ updated, newArrangements, message: parts.join(', ') });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
