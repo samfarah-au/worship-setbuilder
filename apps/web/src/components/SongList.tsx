@@ -89,6 +89,7 @@ interface Props {
   onRetire: (song: Song) => void
   onSongUpdate: (song: Song) => void
   onEditInAdmin: (song: Song) => void
+  setListIds: Set<string>
 }
 
 function reasonColor(reason: string): string {
@@ -101,6 +102,7 @@ export default function SongList({
   songs, selectedSong, selectedArrangement, onSelectAnchor, onClearAnchor,
   suggestions, loading, onAddToSet, onAddPairToSet,
   search, onSearchChange, showRetired, onToggleShowRetired, onRetire, onSongUpdate, onEditInAdmin,
+  setListIds,
 }: Props) {
   const [previewSongId, setPreviewSongId] = useState<string | null>(null)
   const suggestionMap = new Map(suggestions.map(s => [s.song.id, s]))
@@ -201,6 +203,7 @@ export default function SongList({
         {!loading && sorted.map(song => {
           const suggestion = suggestionMap.get(song.id)
           const isAnchor = selectedSong?.id === song.id
+          const inSet = setListIds.has(song.id)
           const score = suggestion ? Math.round(suggestion.total * 100) : null
           const primaryArr = song.arrangements.find(a => a.is_primary) ?? song.arrangements[0]
           const altArrangements = song.arrangements.filter(a => !a.is_primary)
@@ -358,6 +361,9 @@ export default function SongList({
                   >
                     {selectedSong && !isAnchor ? '+ add pair' : '+ add'}
                   </button>
+                  {inSet && !isAnchor && selectedSong && (
+                    <span className="text-xs text-gray-400 italic">in set</span>
+                  )}
                   {song.pco_song_id && (
                     <span className="bg-purple-50 text-purple-600 border border-purple-200 px-1.5 py-px rounded text-xs">PCO</span>
                   )}

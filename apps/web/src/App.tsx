@@ -101,6 +101,8 @@ export default function App() {
     songs.filter(s => s.id === selectedSong?.id || songMatchesFilters(s, clientFilters))
   , [songs, clientFilters, selectedSong])
 
+  const setListIds = useMemo(() => new Set(setList.map(item => item.song.id)), [setList])
+
   const filteredSuggestions = useMemo(() =>
     suggestions.filter(s => {
       const song = songs.find(x => x.id === s.song.id)
@@ -283,6 +285,7 @@ export default function App() {
               songs={filteredSongs}
               selectedSong={selectedSong}
               selectedArrangement={selectedArrangement}
+              setListIds={setListIds}
               onSelectAnchor={(song, arrangement) => { setSelectedSong(song); setSelectedArrangement(arrangement); setSearch('') }}
               onClearAnchor={() => { setSelectedSong(null); setSelectedArrangement(null); setSuggestions([]) }}
               suggestions={filteredSuggestions}
