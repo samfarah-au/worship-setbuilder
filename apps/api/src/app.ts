@@ -4,6 +4,7 @@ import songsRouter from './routes/songs';
 import settingsRouter from './routes/settings';
 import pcoRouter from './routes/pco';
 import feedbackRouter from './routes/feedback';
+import internalRouter from './routes/internal';
 
 const app = express();
 
@@ -18,5 +19,6 @@ app.use('/songs', songsRouter);
 app.use('/settings', settingsRouter);
 app.use('/pco', pcoRouter);
 app.use('/feedback', feedbackRouter);
+app.use('/internal', internalRouter);
 
 export default app;
