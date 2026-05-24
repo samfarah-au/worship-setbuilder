@@ -6,6 +6,7 @@ import SetBuilder from './components/SetBuilder'
 import SourceFilter from './components/SourceFilter'
 import AdminPanel from './components/AdminPanel'
 import FeedbackModal from './components/FeedbackModal'
+import ChangelogModal from './components/ChangelogModal'
 
 type Tab = 'library' | 'admin'
 
@@ -46,6 +47,7 @@ export default function App() {
   const [showRetired, setShowRetired] = useState(false)
   const [adminOpenSongId, setAdminOpenSongId] = useState<string | null>(null)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [changelogOpen, setChangelogOpen] = useState(false)
   const [clientFilters, setClientFilters] = useState<ClientFilters>({
     keys: [], bpmMin: '', bpmMax: '', energy: [], theologicalDepth: [], themes: [], pcoNotUsedMonths: '',
   })
@@ -216,7 +218,7 @@ export default function App() {
   return (
     <div className="flex h-screen bg-gray-100 text-sm overflow-hidden">
       {/* Left: Sidebar */}
-      <div className="bg-white border-r border-gray-200 flex flex-col flex-shrink-0" style={{ width: leftWidth }}>
+      <div className="bg-white border-r border-gray-200 flex flex-col flex-shrink-0 overflow-hidden" style={{ width: leftWidth }}>
         <div className="p-4 border-b border-gray-200">
           <h1 className="font-semibold text-gray-800 text-base">WorshipSet</h1>
           <p className="text-xs text-gray-500 mt-0.5">Set list builder</p>
@@ -266,6 +268,16 @@ export default function App() {
             width={leftWidth}
           />
         )}
+
+        {/* Version badge */}
+        <div className="mt-auto px-4 py-3 border-t border-gray-100">
+          <button
+            onClick={() => setChangelogOpen(true)}
+            className="text-xs text-gray-300 hover:text-gray-500 transition-colors"
+          >
+            v0.1 beta
+          </button>
+        </div>
       </div>
 
       {/* Left resize handle */}
@@ -359,6 +371,7 @@ export default function App() {
       </button>
 
       {feedbackOpen && <FeedbackModal onClose={() => setFeedbackOpen(false)} />}
+      {changelogOpen && <ChangelogModal onClose={() => setChangelogOpen(false)} />}
     </div>
   )
 }
