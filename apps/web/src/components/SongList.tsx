@@ -296,7 +296,7 @@ export default function SongList({
                   {(song.song_metadata?.themes?.length ?? 0) > 0 && (
                     <div className="flex gap-1 mt-1.5 flex-wrap">
                       {song.song_metadata?.themes?.map(theme => (
-                        <span key={theme} className="text-xs bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200">
+                        <span key={theme} className="text-xs bg-violet-50 text-violet-700 px-1.5 py-0.5 rounded border border-violet-200">
                           {theme}
                         </span>
                       ))}

@@ -207,11 +207,11 @@ export default function SourceFilter({
                 onClick={() => set({ themes: toggle(f.themes, theme) })}
                 className={`flex items-center gap-2 px-2.5 py-1.5 rounded text-left text-xs transition-colors ${
                   f.themes.includes(theme)
-                    ? 'bg-amber-50 text-amber-700 border border-amber-300'
+                    ? 'bg-violet-50 text-violet-700 border border-violet-300'
                     : 'bg-gray-50 text-gray-500 border border-gray-200 hover:border-gray-300'
                 }`}
               >
-                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${f.themes.includes(theme) ? 'bg-amber-500' : 'bg-gray-300'}`} />
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${f.themes.includes(theme) ? 'bg-violet-500' : 'bg-gray-300'}`} />
                 {theme}
               </button>
             ))}

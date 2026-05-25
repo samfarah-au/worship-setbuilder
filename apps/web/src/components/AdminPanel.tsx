@@ -1458,7 +1458,7 @@ export default function AdminPanel({ onSongUpdate, onSongAdd, onSongsReload, onL
                 <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Themes</h3>
                 <div className="flex flex-wrap gap-1.5 mb-3">
                   {addForm.themes.map(t => (
-                    <span key={t} className="inline-flex items-center gap-1 text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded">
+                    <span key={t} className="inline-flex items-center gap-1 text-xs bg-violet-50 text-violet-700 border border-violet-200 px-2 py-0.5 rounded">
                       {t}
                       <button onClick={() => setAddForm(prev => prev ? { ...prev, themes: prev.themes.filter(x => x !== t) } : prev)} className="hover:text-red-500 ml-0.5">✕</button>
                     </span>
@@ -1852,7 +1852,7 @@ export default function AdminPanel({ onSongUpdate, onSongAdd, onSongsReload, onL
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Themes</h3>
               <div className="flex flex-wrap gap-1.5 mb-3">
                 {editState.themes.map(theme => (
-                  <span key={theme} className="inline-flex items-center gap-1 text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded">
+                  <span key={theme} className="inline-flex items-center gap-1 text-xs bg-violet-50 text-violet-700 border border-violet-200 px-2 py-0.5 rounded">
                     {theme}
                     <button onClick={() => removeTheme(theme)} className="hover:text-red-500 ml-0.5">✕</button>
                   </span>
