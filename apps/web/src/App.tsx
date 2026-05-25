@@ -220,8 +220,8 @@ export default function App() {
       {/* Left: Sidebar */}
       <div className="bg-white border-r border-gray-200 flex flex-col flex-shrink-0 overflow-hidden" style={{ width: leftWidth }}>
         <div className="p-4 border-b border-gray-200">
-          <h1 className="font-semibold text-gray-800 text-base">WorshipSet</h1>
-          <p className="text-xs text-gray-500 mt-0.5">Set list builder</p>
+          <h1 className="font-bold text-gray-900 text-lg leading-tight">Worship Set Builder</h1>
+          <p className="text-xs text-gray-500 mt-0.5">Build sets that flow</p>
         </div>
 
         {/* Tabs */}
