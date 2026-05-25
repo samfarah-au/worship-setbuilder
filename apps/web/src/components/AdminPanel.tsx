@@ -1079,7 +1079,7 @@ export default function AdminPanel({ onSongUpdate, onSongAdd, onSongsReload, onL
             </div>
             {pcoConnError && <p className="text-xs text-red-500">{pcoConnError}</p>}
             {pcoSaveSuccess && <p className="text-xs text-green-600">Connection saved</p>}
-            {pcoConfigData?.configured ? (
+            {pcoConfigData?.appId ? (
               <div className="flex items-center justify-between py-1">
                 <span className="text-xs text-green-600 font-medium">✓ Connected to Planning Center</span>
                 <button onClick={resetPcoConnection} disabled={pcoSaving} className="text-xs text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50">
