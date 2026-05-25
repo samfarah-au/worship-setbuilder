@@ -1079,24 +1079,28 @@ export default function AdminPanel({ onSongUpdate, onSongAdd, onSongsReload, onL
             </div>
             {pcoConnError && <p className="text-xs text-red-500">{pcoConnError}</p>}
             {pcoSaveSuccess && <p className="text-xs text-green-600">Connection saved</p>}
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-gray-600">App ID</span>
-              <input type="text" value={pcoAppId} onChange={e => setPcoAppId(e.target.value)} className={`px-2.5 py-1.5 text-xs ${fieldClass}`} placeholder="Personal Access Token App ID" />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-gray-600">Secret {pcoConfigData?.configured && <span className="text-gray-400">(leave blank to keep existing)</span>}</span>
-              <input type="password" value={pcoSecret} onChange={e => setPcoSecret(e.target.value)} className={`px-2.5 py-1.5 text-xs ${fieldClass}`} placeholder={pcoConfigData?.configured ? '••••••••' : 'Personal Access Token Secret'} />
-            </label>
-            <div className="flex gap-2">
-              <button onClick={savePcoConnection} disabled={pcoSaving} className="flex-1 text-xs py-1.5 bg-gray-700 text-white rounded hover:bg-gray-800 disabled:opacity-50">
-                {pcoSaving ? 'Connecting…' : 'Save Connection'}
-              </button>
-              {pcoConfigData?.appId && (
-                <button onClick={resetPcoConnection} disabled={pcoSaving} className="text-xs px-3 py-1.5 border border-red-200 text-red-500 hover:bg-red-50 rounded disabled:opacity-50">
-                  Reset
+            {pcoConfigData?.configured ? (
+              <div className="flex items-center justify-between py-1">
+                <span className="text-xs text-green-600 font-medium">✓ Connected to Planning Center</span>
+                <button onClick={resetPcoConnection} disabled={pcoSaving} className="text-xs text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50">
+                  Disconnect
                 </button>
-              )}
-            </div>
+              </div>
+            ) : (
+              <>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-gray-600">App ID</span>
+                  <input type="text" value={pcoAppId} onChange={e => setPcoAppId(e.target.value)} className={`px-2.5 py-1.5 text-xs ${fieldClass}`} placeholder="Personal Access Token App ID" />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-gray-600">Secret</span>
+                  <input type="password" value={pcoSecret} onChange={e => setPcoSecret(e.target.value)} className={`px-2.5 py-1.5 text-xs ${fieldClass}`} placeholder="Personal Access Token Secret" />
+                </label>
+                <button onClick={savePcoConnection} disabled={pcoSaving} className="text-xs py-1.5 bg-gray-700 text-white rounded hover:bg-gray-800 disabled:opacity-50">
+                  {pcoSaving ? 'Connecting…' : 'Save Connection'}
+                </button>
+              </>
+            )}
             {pcoConfigData?.appId && (
               <button onClick={loadPcoPreview} disabled={pcoLoading} className="text-xs py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
                 {pcoLoading ? 'Loading…' : 'Load PCO Library'}
