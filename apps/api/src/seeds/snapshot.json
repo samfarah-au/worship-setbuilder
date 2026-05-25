@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-24T11:29:49.547Z",
+  "generatedAt": "2026-05-25T06:32:35.988Z",
   "songs": [
     {
       "id": "020116ab-e8c9-430a-ab6c-919ca5b6ef49",
@@ -1753,7 +1753,7 @@
       "last_scheduled_at": "2025-09-07T00:00:00+00:00",
       "is_retired": false,
       "created_at": "2026-05-19T02:19:00.77536+00:00",
-      "updated_at": "2026-05-20T07:53:45.947953+00:00"
+      "updated_at": "2026-05-25T06:31:21.773348+00:00"
     },
     {
       "id": "9d3a7a90-3855-44d1-9216-b9dced33fcec",
@@ -2358,7 +2358,7 @@
       "last_scheduled_at": "2026-03-15T00:00:00+00:00",
       "is_retired": false,
       "created_at": "2026-05-19T02:20:41.9812+00:00",
-      "updated_at": "2026-05-20T07:53:52.306586+00:00"
+      "updated_at": "2026-05-25T06:31:15.835302+00:00"
     },
     {
       "id": "d10779b6-98ef-4cf4-8bc8-33d426a02157",
@@ -6333,19 +6333,6 @@
       "created_at": "2026-05-19T02:19:59.466049+00:00"
     },
     {
-      "id": "5e6076df-b6bb-45b4-aaa6-82f9f32e49b3",
-      "song_id": "41f8e529-6199-4487-8e6a-6f8708ecb800",
-      "name": "Default Arrangement",
-      "source_label": null,
-      "key_signature": "G",
-      "key_number": 7,
-      "tempo_bpm": 156,
-      "time_signature": "6/8",
-      "energy_level": 3,
-      "is_primary": true,
-      "created_at": "2026-05-19T02:19:00.99922+00:00"
-    },
-    {
       "id": "bf76642f-69a4-4823-b587-dc1cc1e2fcd0",
       "song_id": "fe9792b4-494a-4bdc-bdff-87cdbfa40e65",
       "name": "Default Arrangement",
@@ -7555,19 +7542,6 @@
       "created_at": "2026-05-19T02:20:49.613995+00:00"
     },
     {
-      "id": "4a752984-3f26-48e6-b0b7-3d2bcb64b602",
-      "song_id": "cfb01642-6a9f-46a4-8e82-21757e5f9962",
-      "name": "Elevation Worship",
-      "source_label": null,
-      "key_signature": "G",
-      "key_number": 7,
-      "tempo_bpm": 84,
-      "time_signature": "6/8",
-      "energy_level": 1,
-      "is_primary": true,
-      "created_at": "2026-05-19T02:20:42.194391+00:00"
-    },
-    {
       "id": "464921aa-7d7d-4a5d-8924-ca6d08622bf4",
       "song_id": "d10779b6-98ef-4cf4-8bc8-33d426a02157",
       "name": "Alternate Key: F",
@@ -7709,6 +7683,45 @@
       "energy_level": 5,
       "is_primary": true,
       "created_at": "2026-05-19T02:20:16.946482+00:00"
+    },
+    {
+      "id": "8453342c-ebc4-4457-b391-64f3707f1f1a",
+      "song_id": "cfb01642-6a9f-46a4-8e82-21757e5f9962",
+      "name": null,
+      "source_label": null,
+      "key_signature": "C",
+      "key_number": 0,
+      "tempo_bpm": 168,
+      "time_signature": "6/8",
+      "energy_level": 4,
+      "is_primary": false,
+      "created_at": "2026-05-25T06:30:26.782262+00:00"
+    },
+    {
+      "id": "4a752984-3f26-48e6-b0b7-3d2bcb64b602",
+      "song_id": "cfb01642-6a9f-46a4-8e82-21757e5f9962",
+      "name": "Elevation Worship",
+      "source_label": null,
+      "key_signature": "G",
+      "key_number": 7,
+      "tempo_bpm": 168,
+      "time_signature": "6/8",
+      "energy_level": 3,
+      "is_primary": true,
+      "created_at": "2026-05-19T02:20:42.194391+00:00"
+    },
+    {
+      "id": "5e6076df-b6bb-45b4-aaa6-82f9f32e49b3",
+      "song_id": "41f8e529-6199-4487-8e6a-6f8708ecb800",
+      "name": "Default Arrangement",
+      "source_label": null,
+      "key_signature": "G",
+      "key_number": 7,
+      "tempo_bpm": 156,
+      "time_signature": "6/8",
+      "energy_level": 3,
+      "is_primary": true,
+      "created_at": "2026-05-19T02:19:00.99922+00:00"
     }
   ],
   "song_metadata": [
@@ -8512,6 +8525,19 @@
       "data_source": "manual"
     },
     {
+      "song_id": "41f8e529-6199-4487-8e6a-6f8708ecb800",
+      "themes": [
+        "love",
+        "grace",
+        "salvation"
+      ],
+      "theological_depth": 2,
+      "style": "modern",
+      "is_hymn": false,
+      "lyric_snippet": null,
+      "data_source": "manual"
+    },
+    {
       "song_id": "a31c2975-1baa-4718-abfa-d60679e60bf6",
       "themes": [
         "peace",
@@ -8718,19 +8744,6 @@
       "data_source": "manual"
     },
     {
-      "song_id": "41f8e529-6199-4487-8e6a-6f8708ecb800",
-      "themes": [
-        "love",
-        "grace",
-        "salvation"
-      ],
-      "theological_depth": 2,
-      "style": "modern",
-      "is_hymn": false,
-      "lyric_snippet": null,
-      "data_source": "manual"
-    },
-    {
       "song_id": "3bc9d7f2-413b-4f41-a563-804fc4b215da",
       "themes": [
         "love",
@@ -8826,19 +8839,6 @@
         "worship",
         "praise",
         "glory"
-      ],
-      "theological_depth": 2,
-      "style": "modern",
-      "is_hymn": false,
-      "lyric_snippet": null,
-      "data_source": "manual"
-    },
-    {
-      "song_id": "cfb01642-6a9f-46a4-8e82-21757e5f9962",
-      "themes": [
-        "holy spirit",
-        "revival",
-        "presence"
       ],
       "theological_depth": 2,
       "style": "modern",
@@ -9310,6 +9310,19 @@
       "themes": [
         "praise",
         "worship"
+      ],
+      "theological_depth": 2,
+      "style": "modern",
+      "is_hymn": false,
+      "lyric_snippet": null,
+      "data_source": "manual"
+    },
+    {
+      "song_id": "cfb01642-6a9f-46a4-8e82-21757e5f9962",
+      "themes": [
+        "holy spirit",
+        "revival",
+        "presence"
       ],
       "theological_depth": 2,
       "style": "modern",
